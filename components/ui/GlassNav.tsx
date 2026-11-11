@@ -3,14 +3,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import DotIcon, { type DotIconName } from "./DotIcon";
 
-export type NavTab = { href: string; label: string; icon: DotIconName };
+// match: other paths that should light up this tab (for example the screens inside "More").
+export type NavTab = { href: string; label: string; icon: DotIconName; match?: string[] };
 
 // Floating glass bar at the bottom of the screen. A dark pill slides under the current tab.
-// This is the only always-on blur layer in the app.
+// This is the only always-on blur layer in the app. With one tab or none (a helper) the bar is hidden.
 export default function GlassNav({ tabs }: { tabs: NavTab[] }) {
   const path = usePathname();
-  if (path.startsWith("/login")) return null;
-  const isActive = (t: NavTab) => (t.href === "/" ? path === "/" : path.startsWith(t.href));
+  if (path.startsWith("/login") || tabs.length < 2) return null;
+  const isActive = (t: NavTab) => (t.href === "/" ? path === "/" : [t.href, ...(t.match ?? [])].some((p) => path.startsWith(p)));
   const found = tabs.findIndex(isActive);
   const index = found < 0 ? 0 : found;
   return (

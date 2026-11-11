@@ -1,17 +1,33 @@
 // Demo mode: the Session 6 sample data, held in memory on the server.
 // Dates are shifted so the last day of sample data is always yesterday.
-// Changes (sales, deliveries, orders) last until the server restarts.
+// Changes (sales, deliveries, orders, items, helpers, calendar) last until the server restarts.
+// Roles: the demo has an Owner / Helper switch at the top of the screen. It is kept in a cookie and used only here.
+import { cookies } from "next/headers";
 import raw from "./demo-data.json";
-import { addDays } from "@/lib/forecast/desk";
+import { addDays, type CalendarDay } from "@/lib/forecast/desk";
 import { asOfDay, daysBetween, todayIST } from "@/lib/dates";
-import type { Distributor, ImportResult, ImportRow, Item, Sale, Shop, Store } from "./types";
+import type {
+  AiForecastRow, DeliveryRecord, Distributor, DistributorInput, Helper, ImportResult, ImportRow, Item, ItemInput,
+  Me, OpenOrder, OrderRecord, Sale, Shop, Store,
+} from "./types";
 
+interface DemoOrder { orderId: string; distributorId: string; date: string; lines: { itemId: string; qty: number }[]; delivered: boolean; prepSeconds: number | null }
 interface DemoState {
   items: Item[];
+  distributors: Distributor[];
+  calendar: CalendarDay[];
   sales: Sale[];
-  openOrders: { orderId: string; distributorId: string; lines: { itemId: string; qty: number }[]; delivered: boolean }[];
+  deliveries: DeliveryRecord[];
+  orders: DemoOrder[];
+  helpers: Helper[];
+  aiRows: AiForecastRow[];
   nextOrder: number;
+  nextItem: number;
+  nextDistributor: number;
+  nextHelper: number;
 }
+
+export const DEMO_ROLE_COOKIE = "ss_role";
 
 const g = globalThis as unknown as { __stocksaathiDemo?: DemoState };
 
@@ -19,9 +35,17 @@ function load(): DemoState {
   const shift = daysBetween(raw.lastDataDay, asOfDay());
   return {
     items: raw.items.map((i) => ({ ...i })),
+    distributors: raw.distributors.map((d) => ({ ...d })),
+    calendar: raw.calendar.map((c) => ({ ...c })),
     sales: raw.sales.map(([date, itemId, qty]) => ({ date: addDays(date as string, shift), itemId: itemId as string, qty: qty as number })),
-    openOrders: [],
+    deliveries: [],
+    orders: [],
+    helpers: [{ id: "U02", name: "Karthik", email: "karthik@example.com", status: "Active" }],
+    aiRows: [],
     nextOrder: 9,
+    nextItem: 101,
+    nextDistributor: 51,
+    nextHelper: 10,
   };
 }
 function state(): DemoState {
@@ -29,17 +53,33 @@ function state(): DemoState {
   return g.__stocksaathiDemo;
 }
 
+const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
 export const demoStore: Store = {
   mode: "demo",
+  async getMe(): Promise<Me> {
+    const role = (await cookies()).get(DEMO_ROLE_COOKIE)?.value === "helper" ? "helper" : "owner";
+    const who = raw.users.find((u) => u.role === role);
+    return { name: who?.name ?? role, role, isTeam: role === "owner" };
+  },
   async getShop(): Promise<Shop> { return raw.shop; },
   async listItems() { return state().items; },
-  async listDistributors(): Promise<Distributor[]> { return raw.distributors; },
+  async listDistributors(): Promise<Distributor[]> { return state().distributors; },
   async listSales(sinceDate) { return state().sales.filter((s) => s.date >= sinceDate); },
-  async listCalendar() { return raw.calendar; },
+  async listDeliveries(sinceDate) { return state().deliveries.filter((d) => d.date >= sinceDate); },
+  async listCalendar() { return [...state().calendar].sort((a, b) => a.date.localeCompare(b.date)); },
   async openOrderQty() {
     const out: Record<string, number> = {};
-    for (const o of state().openOrders) if (!o.delivered) for (const l of o.lines) out[l.itemId] = (out[l.itemId] ?? 0) + l.qty;
+    for (const o of state().orders) if (!o.delivered) for (const l of o.lines) out[l.itemId] = (out[l.itemId] ?? 0) + l.qty;
     return out;
+  },
+  async openOrders(): Promise<OpenOrder[]> {
+    return state().orders
+      .filter((o) => !o.delivered && o.lines.length)
+      .map((o) => ({ orderId: o.orderId, distributorId: o.distributorId, orderedOn: o.date, lines: o.lines.map((l) => ({ ...l })) }));
+  },
+  async listOrders(sinceDate): Promise<OrderRecord[]> {
+    return state().orders.filter((o) => o.date >= sinceDate).map((o) => ({ orderId: o.orderId, date: o.date, distributorId: o.distributorId, prepSeconds: o.prepSeconds }));
   },
   async addSale(itemId, qty) {
     const s = state();
@@ -53,7 +93,8 @@ export const demoStore: Store = {
     const item = s.items.find((i) => i.id === itemId);
     if (!item) throw new Error("Unknown item");
     item.currentStock += qty;
-    for (const o of s.openOrders) if (!o.delivered && o.lines.some((l) => l.itemId === itemId)) {
+    s.deliveries.push({ date: todayIST(), itemId, qty });
+    for (const o of s.orders) if (!o.delivered && o.lines.some((l) => l.itemId === itemId)) {
       o.lines = o.lines.filter((l) => l.itemId !== itemId);
       if (!o.lines.length) o.delivered = true;
     }
@@ -71,10 +112,70 @@ export const demoStore: Store = {
     }
     return { saved, errors };
   },
-  async createOrder(distributorId, lines) {
+  async createOrder(distributorId, lines, prepSeconds = null) {
     const s = state();
     const orderId = `PO-${String(s.nextOrder++).padStart(4, "0")}`;
-    s.openOrders.push({ orderId, distributorId, lines: lines.filter((l) => l.qty > 0), delivered: false });
+    s.orders.push({ orderId, distributorId, date: todayIST(), lines: lines.filter((l) => l.qty > 0), delivered: false, prepSeconds });
     return { orderId };
+  },
+
+  async saveItem(id, input: ItemInput) {
+    const s = state();
+    if (!s.distributors.some((d) => d.id === input.distributorId)) throw new Error("Choose a distributor from the list.");
+    if (s.items.some((i) => i.id !== id && sameName(i.name, input.name))) throw new Error("An item with this name already exists.");
+    if (id) {
+      const it = s.items.find((i) => i.id === id);
+      if (!it) throw new Error("Item not found.");
+      Object.assign(it, { name: input.name, category: input.category, pack: input.pack, price: input.price, distributorId: input.distributorId, leadTimeDays: input.leadTimeDays, minSafetyStock: input.minSafetyStock, orderCoverDays: input.orderCoverDays });
+      return { id };
+    }
+    const newId = `I${s.nextItem++}`;
+    s.items.push({ id: newId, name: input.name, category: input.category, pack: input.pack, price: input.price, distributorId: input.distributorId, leadTimeDays: input.leadTimeDays, minSafetyStock: input.minSafetyStock, orderCoverDays: input.orderCoverDays, currentStock: input.openingStock });
+    return { id: newId };
+  },
+  async archiveItem(id) {
+    const s = state();
+    s.items = s.items.filter((i) => i.id !== id);
+  },
+  async saveDistributor(id, input: DistributorInput) {
+    const s = state();
+    if (s.distributors.some((d) => d.id !== id && sameName(d.name, input.name))) throw new Error("A distributor with this name already exists.");
+    if (id) {
+      const d = s.distributors.find((x) => x.id === id);
+      if (!d) throw new Error("Distributor not found.");
+      Object.assign(d, input);
+      return { id };
+    }
+    const newId = `D${s.nextDistributor++}`;
+    s.distributors.push({ id: newId, ...input });
+    return { id: newId };
+  },
+  async listHelpers() { return state().helpers.map((h) => ({ ...h })); },
+  async addHelper(email, name) {
+    const s = state();
+    if (s.helpers.some((h) => h.email === email)) throw new Error("This email is already a helper.");
+    s.helpers.push({ id: `U${s.nextHelper++}`, name: name || email.split("@")[0], email, status: "Invited" });
+  },
+  async removeHelper(id) {
+    const s = state();
+    s.helpers = s.helpers.filter((h) => h.id !== id);
+  },
+
+  async saveCalendarDay(day) {
+    const s = state();
+    const i = s.calendar.findIndex((c) => c.date === day.date);
+    if (i >= 0) s.calendar[i] = day; else s.calendar.push(day);
+  },
+  async deleteCalendarDay(date) {
+    const s = state();
+    s.calendar = s.calendar.filter((c) => c.date !== date);
+  },
+
+  async listAiForecasts(sinceDate) { return state().aiRows.filter((r) => r.runDate >= sinceDate); },
+  async saveAiForecasts(rows) {
+    const s = state();
+    const key = (r: AiForecastRow) => `${r.runDate}|${r.itemId}|${r.provider}`;
+    const fresh = new Set(rows.map(key));
+    s.aiRows = [...s.aiRows.filter((r) => !fresh.has(key(r))), ...rows];
   },
 };

@@ -8,7 +8,7 @@ import DotIcon, { type DotIconName } from "./DotIcon";
 import { Badge, ConfidenceBadge } from "./Badge";
 import { DotLabel, DotNumber } from "./DotText";
 
-const ICONS: DotIconName[] = ["home", "sell", "reorder", "stock", "alert", "check", "share", "back", "next", "layers", "plus", "minus"];
+const ICONS: DotIconName[] = ["home", "sell", "reorder", "stock", "alert", "check", "share", "back", "next", "layers", "plus", "minus", "deliver", "grid", "chart", "timer", "people", "calendar", "ai", "edit"];
 const SWATCHES = [
   ["--ink", "Text"], ["--ink-2", "Secondary text"], ["--glass-bg", "Glass fill"], ["--solid-bg", "Solid fill"], ["--alert", "Alert (red)"],
 ];

@@ -1,25 +1,74 @@
 import type { CalendarDay } from "@/lib/forecast/desk";
 
+export type Role = "owner" | "helper";
+
+/** The signed-in person. isTeam = a member of the product team (may edit the festival calendar, FR8). */
+export interface Me { name: string; role: Role; isTeam: boolean }
+
 export interface Shop { id: string; name: string; locality: string }
 export interface Distributor { id: string; name: string; supplies: string; salesman: string; whatsapp: string; visitDay: string }
+export interface DistributorInput { name: string; supplies: string; salesman: string; whatsapp: string; visitDay: string }
 export interface Item {
   id: string; name: string; category: string; pack: string; price: number; distributorId: string;
   leadTimeDays: number; minSafetyStock: number; orderCoverDays: number; currentStock: number;
 }
+/** What the owner types on the item set-up screen. openingStock is used only when adding a new item. */
+export interface ItemInput {
+  name: string; category: string; pack: string; price: number; distributorId: string;
+  leadTimeDays: number; minSafetyStock: number; orderCoverDays: number; openingStock: number;
+}
 export interface Sale { date: string; itemId: string; qty: number }
+export interface DeliveryRecord { date: string; itemId: string; qty: number }
 export interface ImportRow { date: string; itemName: string; qty: number; line: number }
 export interface ImportResult { saved: number; errors: { line: number; issue: string }[] }
 
+/** An order that was sent and has not been delivered yet. */
+export interface OpenOrder {
+  orderId: string; distributorId: string; orderedOn: string;
+  lines: { itemId: string; qty: number }[];
+}
+/** A sent order, with the time it took to prepare (KPI 2). */
+export interface OrderRecord { orderId: string; date: string; distributorId: string; prepSeconds: number | null }
+
+export interface Helper { id: string; name: string; email: string; status: "Active" | "Invited" }
+
+/** One AI forecast kept for later checking (see docs/ai-integration.md). */
+export interface AiForecastRow {
+  runDate: string; itemId: string; provider: string;
+  aiUnitsPerDay: number; blendUnitsPerDay: number; horizonDays: number;
+  low: number | null; high: number | null;
+}
+
 export interface Store {
   mode: "demo" | "live";
+  getMe(): Promise<Me>;
   getShop(): Promise<Shop>;
   listItems(): Promise<Item[]>;
   listDistributors(): Promise<Distributor[]>;
   listSales(sinceDate: string): Promise<Sale[]>;
+  listDeliveries(sinceDate: string): Promise<DeliveryRecord[]>;
   listCalendar(): Promise<CalendarDay[]>;
   openOrderQty(): Promise<Record<string, number>>;
+  openOrders(): Promise<OpenOrder[]>;
+  listOrders(sinceDate: string): Promise<OrderRecord[]>;
   addSale(itemId: string, qty: number, method: "Quick tap" | "CSV upload"): Promise<void>;
   addDelivery(itemId: string, qty: number): Promise<void>;
   importSales(rows: ImportRow[]): Promise<ImportResult>;
-  createOrder(distributorId: string, lines: { itemId: string; qty: number }[]): Promise<{ orderId: string }>;
+  createOrder(distributorId: string, lines: { itemId: string; qty: number }[], prepSeconds?: number | null): Promise<{ orderId: string }>;
+
+  // Set-up (owner only)
+  saveItem(id: string | null, input: ItemInput): Promise<{ id: string }>;
+  archiveItem(id: string): Promise<void>;
+  saveDistributor(id: string | null, input: DistributorInput): Promise<{ id: string }>;
+  listHelpers(): Promise<Helper[]>;
+  addHelper(email: string, name: string): Promise<void>;
+  removeHelper(id: string): Promise<void>;
+
+  // Festival calendar (product team only)
+  saveCalendarDay(day: CalendarDay): Promise<void>;
+  deleteCalendarDay(date: string): Promise<void>;
+
+  // AI forecasts kept for checking
+  listAiForecasts(sinceDate: string): Promise<AiForecastRow[]>;
+  saveAiForecasts(rows: AiForecastRow[]): Promise<void>;
 }

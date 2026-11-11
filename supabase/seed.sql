@@ -1680,3 +1680,8 @@ alter table sales enable trigger sale_reduces_stock;
 -- After the owner signs in with Google once, link their account to this shop (replace the email):
 -- insert into users (id, shop_id, name, role)
 --   select id, '6c3c066c-41b0-53c0-9535-012584e1286a', 'Owner', 'owner' from auth.users where email = 'owner@example.com';
+
+-- Run supabase/migrations/0003_roles_setup_scorecard_ai.sql too. Then:
+-- Product team members (may edit the festival calendar, FR8). They are also owners of a shop:
+-- update users set is_team = true where id in (select id from auth.users where email = 'team@example.com');
+-- Helpers are added by the owner in the app (More → Helpers). They sign in with that Google email and see only the Sell screen.

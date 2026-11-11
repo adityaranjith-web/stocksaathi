@@ -6,10 +6,12 @@ import ReorderList, { type Group } from "@/components/ReorderList";
 import Glass from "@/components/ui/Glass";
 import DotIcon from "@/components/ui/DotIcon";
 import { DotLabel } from "@/components/ui/DotText";
+import { requireOwner } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function ReorderPage() {
+  await requireOwner();
   const store = getStore();
   const [shop, desk] = await Promise.all([store.getShop(), computeShopDesk(store)]);
   const byId = new Map(desk.items.map((i) => [i.id, i]));

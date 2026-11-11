@@ -9,12 +9,14 @@ import DotIcon from "@/components/ui/DotIcon";
 import DotMeter from "@/components/ui/DotMeter";
 import { ConfidenceBadge } from "@/components/ui/Badge";
 import { DotLabel, DotNumber } from "@/components/ui/DotText";
+import { requireOwner } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 const f1 = (x: number) => (Number.isFinite(x) ? x.toFixed(1) : "–");
 
 export default async function WhyPage({ params }: { params: Promise<{ id: string }> }) {
+  await requireOwner();
   const { id } = await params;
   const desk = await computeShopDesk(getStore());
   const r = desk.results.get(id);

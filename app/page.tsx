@@ -6,10 +6,12 @@ import Glass from "@/components/ui/Glass";
 import Button from "@/components/ui/Button";
 import DotIcon from "@/components/ui/DotIcon";
 import { DotLabel, DotNumber } from "@/components/ui/DotText";
+import { requireOwner } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
+  await requireOwner(); // BR7: a helper only sees the Sell screen
   const store = getStore();
   const [shop, desk] = await Promise.all([store.getShop(), computeShopDesk(store)]);
   const results = [...desk.results.values()];
@@ -56,7 +58,18 @@ export default async function Home() {
         </Glass>
       )}
 
-      <div className="rise" style={{ "--d": 5 } as React.CSSProperties}>
+      <div className="grid grid-cols-2 gap-3">
+        <Glass as={Link} href="/deliveries" blur={false} delay={5} className="press block p-4">
+          <DotLabel>Deliveries</DotLabel>
+          <p className="mt-2 text-sm"><span className="text-2xl font-bold">{Object.keys(desk.onOrder).length}</span> item(s) on order</p>
+        </Glass>
+        <Glass as={Link} href="/scorecard" blur={false} delay={5} className="press block p-4">
+          <DotLabel>Scorecard</DotLabel>
+          <p className="mt-2 text-sm">See how this week went</p>
+        </Glass>
+      </div>
+
+      <div className="rise" style={{ "--d": 6 } as React.CSSProperties}>
         <Button href="/sell" icon="sell" full>Record a sale</Button>
       </div>
     </div>

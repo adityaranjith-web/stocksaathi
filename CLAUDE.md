@@ -15,7 +15,7 @@ A phone app that gives a kirana owner a daily "Reorder today" list. Next.js 15, 
 ```bash
 npm install
 npm run dev      # demo mode at http://localhost:3000 when no Supabase keys are set
-npm test         # vitest, 14 tests
+npm test         # vitest (the 14 Forecast Desk tests plus tests for the scorecard, timer, set-up checks and AI plug-in)
 npm run build    # next build, also checks types and lint
 ```
 
@@ -24,11 +24,15 @@ npm run build    # next build, also checks types and lint
 - `lib/forecast/desk.ts`: the Forecast Desk (5 models, check, blend, BR1 to BR6). Pure code, no database. Tests in `lib/forecast/desk.test.ts`.
 - `lib/desk-service.ts`: builds each item's sales series and runs the Desk for the shop.
 - `lib/data/`: `Store` interface with two versions: `demo.ts` (in memory, sample data) and `supabase.ts` (live, row-level security per shop).
-- `app/`: screens (`/sell`, `/reorder`, `/stock`, `/item/[id]`, `/login`) and `app/api/*` routes.
+- `app/`: screens (`/sell`, `/reorder`, `/deliveries`, `/more`, `/stock`, `/scorecard`, `/item/[id]`, `/setup/*` for items, distributors, helpers and festival calendar, `/ai`, `/login`) and `app/api/*` routes.
+- `lib/auth.ts`: who is signed in. `requireOwner()` / `requireTeam()` for pages, `ownerOnly()` / `teamOnly()` for API routes. Every new owner-only page and route must use one.
+- `lib/scorecard.ts`, `lib/prep-time.ts`, `lib/validate.ts`: pure maths and checks, with tests next to them.
+- `lib/forecast/ai/`: plug-in system for AI forecasts (off by default). See `docs/ai-integration.md`. AI settings are server-only.
 - `supabase/migrations/`, `supabase/seed.sql`: database schema and sample data.
 
 ## Business rules to respect
 
 - Only the owner can send orders or change stock, prices and settings. Helpers can only record sales (BR7). The database already enforces this; keep the screens in line with it.
 - Record no shopper personal data.
-- Demo mode (no Supabase keys) must keep working.
+- Demo mode (no Supabase keys) must keep working for every screen. Demo mode has an Owner / Helper switch at the top.
+- A helper sees only the Sell screen. New screens and API routes are owner-only unless they are about recording a sale.
