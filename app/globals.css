@@ -1,0 +1,257 @@
+@import "tailwindcss";
+
+/* =====================================================================
+   StockSaathi design system: "Glass and dots"
+   - Frosted glass panels float over a soft blurred colour background.
+   - Dot-matrix details: Doto font for big numbers and labels, dot-grid icons.
+   - One red accent, used for alerts only.
+   Everything below reads from the tokens in :root. Change a token here and
+   the whole app follows. Dark mode swaps the tokens; nothing else changes.
+   ===================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* Surface colours (light) */
+  --bg-base: #e8edf5;
+  --blob-a: rgba(140, 160, 255, 0.55); /* soft blue-violet */
+  --blob-b: rgba(120, 220, 190, 0.5);  /* soft mint */
+  --blob-c: rgba(255, 210, 160, 0.5);  /* soft sand */
+
+  --ink: #10151c;        /* main text */
+  --ink-2: #394453;      /* secondary text */
+  --ink-inverse: #f5f8fc;
+
+  --glass-bg: rgba(255, 255, 255, 0.6);
+  --glass-edge: rgba(255, 255, 255, 0.75);
+  --glass-hi: rgba(255, 255, 255, 0.9);
+  --glass-shadow: 0 10px 34px rgba(30, 45, 80, 0.14), 0 2px 6px rgba(30, 45, 80, 0.06);
+  --solid-bg: #f6f8fc;
+  --solid-edge: #cdd6e3;
+
+  --field-bg: rgba(255, 255, 255, 0.75);
+  --field-edge: rgba(16, 21, 28, 0.28);
+  --dot: rgba(16, 21, 28, 0.16);
+  --line: rgba(16, 21, 28, 0.14); /* thin dividers inside panels */
+
+  /* The one accent: red, for alerts only */
+  --alert: #a61f18;
+  --alert-bg: rgba(166, 31, 24, 0.1);
+  --alert-edge: rgba(166, 31, 24, 0.45);
+
+  /* Shape, blur, motion */
+  --r-lg: 24px;
+  --r-md: 16px;
+  --r-pill: 999px;
+  --blur: 16px;
+  --tap: 48px; /* minimum touch target (44px is the floor) */
+  --spring: linear(0, 0.1126, 0.3448, 0.588 11.5%, 0.7876, 0.9262, 1.0076 23.1%, 1.0453, 1.0543, 1.0477 34.6%, 1.035, 1.0218, 1.0111 46.2%, 1.0038, 0.9995, 0.9975 57.7%, 0.9971, 0.9974, 0.9981 69.2%, 0.9988, 0.9994, 0.9998 80.8%, 1, 1.0001, 1.0002 92.3%, 1.0001, 1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg-base: #0a0e16;
+    --blob-a: rgba(90, 100, 220, 0.38);
+    --blob-b: rgba(30, 150, 140, 0.3);
+    --blob-c: rgba(120, 90, 170, 0.28);
+
+    --ink: #eef2f8;
+    --ink-2: #aab5c6;
+    --ink-inverse: #0a0e16;
+
+    --glass-bg: rgba(26, 32, 46, 0.58);
+    --glass-edge: rgba(255, 255, 255, 0.16);
+    --glass-hi: rgba(255, 255, 255, 0.2);
+    --glass-shadow: 0 12px 38px rgba(0, 0, 0, 0.45), 0 2px 6px rgba(0, 0, 0, 0.3);
+    --solid-bg: #151b27;
+    --solid-edge: #2b3548;
+
+    --field-bg: rgba(10, 14, 22, 0.55);
+    --field-edge: rgba(238, 242, 248, 0.4);
+    --dot: rgba(238, 242, 248, 0.16);
+    --line: rgba(238, 242, 248, 0.16);
+
+    --alert: #ff8f86;
+    --alert-bg: rgba(255, 143, 134, 0.14);
+    --alert-edge: rgba(255, 143, 134, 0.5);
+  }
+}
+
+/* Reduce transparency: solid panels. Used when the user asks for it, when the
+   phone asks for it, or when the app finds the phone is slow (see GlassMode). */
+@media (prefers-reduced-transparency: reduce) {
+  :root { --glass-bg: var(--solid-bg); --glass-edge: var(--solid-edge); --glass-hi: transparent; --field-bg: var(--solid-bg); --blur: 0px; }
+}
+:root[data-glass="solid"] {
+  --glass-bg: var(--solid-bg); --glass-edge: var(--solid-edge); --glass-hi: transparent; --field-bg: var(--solid-bg); --blur: 0px;
+}
+
+/* Tailwind utility names for the tokens: bg-ink, text-ink-2, text-alert, ... */
+@theme inline {
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-alert: var(--alert);
+  --color-line: var(--line);
+  --color-inverse: var(--ink-inverse);
+  --font-dot: var(--font-doto), ui-monospace, monospace;
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+/* ---------- Page and soft blurred colour background ---------- */
+html, body { min-height: 100%; }
+body {
+  background: var(--bg-base);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+/* Three big soft gradients. Gradients are already soft, so no blur filter is needed: cheap on slow phones. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(60% 45% at 12% 8%, var(--blob-a), transparent 70%),
+    radial-gradient(55% 45% at 95% 40%, var(--blob-c), transparent 70%),
+    radial-gradient(65% 50% at 20% 100%, var(--blob-b), transparent 70%);
+  pointer-events: none;
+}
+
+/* Component classes live in the "components" layer so Tailwind utilities (p-5, text-lg ...) can still override them. */
+@layer components {
+
+/* ---------- Glass panel ---------- */
+.glass {
+  position: relative;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-edge);
+  border-radius: var(--r-lg);
+  box-shadow: var(--glass-shadow), inset 0 1px 0 var(--glass-hi);
+}
+/* Only a few panels per screen get real blur (it costs battery and speed). */
+.glass-blur {
+  -webkit-backdrop-filter: blur(var(--blur)) saturate(1.5);
+  backdrop-filter: blur(var(--blur)) saturate(1.5);
+}
+/* Solid mode: switch the blur off completely (no hidden compositing layer either). */
+:root[data-glass="solid"] .glass-blur { -webkit-backdrop-filter: none; backdrop-filter: none; }
+@media (prefers-reduced-transparency: reduce) {
+  .glass-blur { -webkit-backdrop-filter: none; backdrop-filter: none; }
+}
+/* Faint dot grid in a panel corner: the instrument detail. */
+.glass-dots::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background-image: radial-gradient(circle, var(--dot) 1.1px, transparent 1.5px);
+  background-size: 9px 9px;
+  -webkit-mask-image: radial-gradient(70% 90% at 100% 0%, #000, transparent 75%);
+  mask-image: radial-gradient(70% 90% at 100% 0%, #000, transparent 75%);
+}
+
+/* ---------- Dot-matrix type ---------- */
+.dot-font { font-family: var(--font-dot); font-variation-settings: "ROND" 100; }
+.dot-label {
+  display: block;
+  font-family: var(--font-dot);
+  font-variation-settings: "ROND" 100;
+  font-weight: 800;
+  font-size: 0.9rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+.dot-number { font-family: var(--font-dot); font-variation-settings: "ROND" 100; font-weight: 900; line-height: 1; font-variant-numeric: tabular-nums; }
+
+/* ---------- Buttons and fields ---------- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.6rem;
+  min-height: var(--tap); padding: 0 1.25rem;
+  border-radius: var(--r-pill);
+  font-weight: 700; font-size: 1rem;
+  border: 1px solid transparent;
+  cursor: pointer; user-select: none;
+  transition: transform 0.45s var(--spring), background-color 0.2s, opacity 0.2s;
+}
+.btn:active { transform: scale(0.96); }
+.btn:focus-visible, .field:focus-visible, .navlink:focus-visible, .icon-btn:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+.btn[disabled], .btn[aria-disabled="true"] { opacity: 0.55; pointer-events: none; }
+.btn-primary { background: var(--ink); color: var(--ink-inverse); box-shadow: 0 6px 18px rgba(16, 21, 28, 0.25); }
+.btn-ghost { background: var(--glass-bg); color: var(--ink); border-color: var(--field-edge); }
+.btn-alert { background: var(--alert); color: var(--ink-inverse); }
+.icon-btn {
+  display: inline-grid; place-items: center; width: var(--tap); height: var(--tap);
+  border-radius: var(--r-pill); background: var(--glass-bg); color: var(--ink);
+  border: 1px solid var(--glass-edge); cursor: pointer;
+  transition: transform 0.45s var(--spring);
+}
+.icon-btn:active { transform: scale(0.92); }
+
+.field {
+  min-height: var(--tap); border-radius: var(--r-md);
+  background: var(--field-bg); color: var(--ink);
+  border: 1.5px solid var(--field-edge);
+  padding: 0 0.75rem; font-size: 1rem;
+}
+
+/* ---------- Badges ---------- */
+.badge {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  min-height: 28px; padding: 0 0.7rem; border-radius: var(--r-pill);
+  font-size: 0.8125rem; font-weight: 700;
+  background: var(--glass-bg); color: var(--ink); border: 1px solid var(--field-edge);
+}
+.badge-alert { background: var(--alert-bg); color: var(--alert); border-color: var(--alert-edge); }
+
+/* ---------- Toast ---------- */
+.toast {
+  position: fixed; left: 50%; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); z-index: 30;
+  width: min(92vw, 26rem);
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.85rem 1.1rem; border-radius: var(--r-md);
+  background: var(--ink); color: var(--ink-inverse); font-weight: 600;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+  animation: toast-in 0.6s var(--spring) both;
+}
+.toast-alert { background: var(--alert); }
+
+/* ---------- Bottom navigation ---------- */
+.nav-wrap { position: fixed; inset-inline: 0; bottom: 0; z-index: 20; padding: 0 12px calc(10px + env(safe-area-inset-bottom, 0px)); pointer-events: none; }
+.nav-bar { pointer-events: auto; margin-inline: auto; max-width: 26rem; border-radius: var(--r-pill); padding: 6px; }
+.nav-track { position: relative; display: grid; grid-template-columns: repeat(var(--n), 1fr); }
+.nav-pill {
+  position: absolute; inset-block: 0; left: 0; width: calc(100% / var(--n));
+  border-radius: var(--r-pill); background: var(--ink);
+  transform: translateX(calc(var(--i) * 100%));
+  transition: transform 0.55s var(--spring);
+}
+.navlink {
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  min-height: 56px; border-radius: var(--r-pill); color: var(--ink);
+  font-size: 0.75rem; font-weight: 700; transition: color 0.25s;
+}
+.navlink[aria-current="page"] { color: var(--ink-inverse); }
+
+/* ---------- Motion ---------- */
+.rise { animation: rise 0.7s var(--spring) both; animation-delay: calc(var(--d, 0) * 70ms); }
+.press { transition: transform 0.45s var(--spring); }
+.press:active { transform: scale(0.98); }
+
+/* Red alert panel */
+.glass-alert { background: var(--alert-bg); border-color: var(--alert-edge); color: var(--alert); }
+
+}
+
+@keyframes rise { from { opacity: 0; transform: translateY(16px) scale(0.97); } to { opacity: 1; transform: none; } }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 24px) scale(0.95); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .rise, .toast { animation: none; }
+  .toast { transform: translateX(-50%); }
+  .btn, .icon-btn, .press, .nav-pill { transition: none; }
+  .btn:active, .icon-btn:active, .press:active { transform: none; }
+}

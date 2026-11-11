@@ -1,0 +1,104 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>StockSaathi prototype</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700&family=Hind:wght@400;600&display=swap">
+<style>
+:root{--bg:#EEF1F6;--card:#fff;--ink:#14213D;--mut:#5B6578;--line:#D9DEE8;--acc:#F4A300;--ok:#157A4F;--bad:#C13B2B;--okb:#DDF3E7;--badb:#FBE3DF;--wb:#FFF1CC;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#0E1424;--card:#18203A;--ink:#EEF1F8;--mut:#9AA5BD;--line:#2B3556;--acc:#F4B73A;--ok:#4CC38A;--bad:#FF7B6B;--okb:#123B2B;--badb:#45201C;--wb:#403211;color-scheme:dark}}
+:root[data-theme=dark]{--bg:#0E1424;--card:#18203A;--ink:#EEF1F8;--mut:#9AA5BD;--line:#2B3556;--acc:#F4B73A;--ok:#4CC38A;--bad:#FF7B6B;--okb:#123B2B;--badb:#45201C;--wb:#403211;color-scheme:dark}
+html,body{height:100%;margin:0}body{background:var(--bg);color:var(--ink);font:400 15px/1.45 Hind,system-ui,sans-serif}
+*{box-sizing:border-box}h1,h2,h3{font-family:'Bricolage Grotesque',system-ui,sans-serif;margin:0}
+#app{max-width:430px;height:100%;margin:0 auto;display:flex;flex-direction:column;background:var(--bg)}
+header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--ink);color:var(--bg)}
+header b{font:700 17px 'Bricolage Grotesque',sans-serif}header small{display:block;opacity:.7;font-size:12px}
+.seg{display:flex;background:rgba(255,255,255,.15);border-radius:99px;padding:2px}.seg button{border:0;background:none;color:inherit;padding:4px 11px;border-radius:99px;font:inherit;font-size:13px}.seg .on{background:var(--acc);color:#14213D}
+main{flex:1;overflow:auto;padding:14px}
+nav{display:flex;border-top:1px solid var(--line);background:var(--card)}nav button{flex:1;border:0;background:none;color:var(--mut);padding:11px 0;font:600 13px Hind,sans-serif}nav .on{color:var(--ink);box-shadow:inset 0 3px var(--acc)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
+.big{font:700 34px 'Bricolage Grotesque',sans-serif;line-height:1}.mut{color:var(--mut);font-size:13px}
+.row{display:flex;align-items:center;gap:10px;justify-content:space-between;padding:9px 0;border-top:1px solid var(--line)}.row:first-of-type{border-top:0}
+.btn{border:0;border-radius:10px;background:var(--acc);color:#14213D;font:600 15px Hind,sans-serif;padding:11px 14px;width:100%}.btn.s{width:auto;padding:6px 11px;font-size:13px;background:none;border:1px solid var(--line);color:var(--ink)}
+.pill{font-size:12px;border-radius:99px;padding:1px 8px;background:var(--wb)}.High{background:var(--okb);color:var(--ok)}.Low{background:var(--badb);color:var(--bad)}
+input[type=number]{width:70px;padding:6px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit;text-align:right}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.tile{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:12px;padding:14px 8px;text-align:left;font:600 15px Hind,sans-serif;min-height:78px}.tile:active{background:var(--acc)}.tile small{display:block;font-weight:400;color:var(--mut)}
+.chips button{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:99px;padding:6px 16px;font:600 15px Hind;margin-right:6px}.chips .on{background:var(--ink);color:var(--bg)}
+.bar{height:8px;border-radius:4px;background:var(--acc)}
+.sheet[hidden]{display:none}.sheet{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center}.sheet>div{background:var(--card);color:var(--ink);width:100%;max-width:430px;max-height:85%;overflow:auto;border-radius:16px 16px 0 0;padding:16px}
+#toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 16px;border-radius:99px;opacity:0;transition:opacity .2s;pointer-events:none;font-weight:600}#toast.on{opacity:1}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:5px 3px;text-align:right;border-top:1px solid var(--line)}td:first-child,th:first-child{text-align:left}
+</style></head><body>
+<div id="app"><header><div><b>StockSaathi</b><small>Lakshmi General Store · demo data</small></div><div class="seg" id="role"></div></header><main id="v"></main><nav id="nav"></nav></div>
+<div id="sh" class="sheet" hidden><div id="shc"></div></div><div id="toast"></div>
+<script>
+const D=[['Shree Traders','919800000001'],['Gupta Dairy','919800000002'],['Parle Agency','919800000003'],['Aqua Fresh','919800000004']];
+const I=[
+{n:'Sugar 1 kg',s:12,L:2,m:4,cv:7,d:0,f:[9.6,8.7,9,9.4,11],e:[2,2.5,2,1.6,3.2],a:8.7,ls:0,t:6,c:44},
+{n:'Amul Milk 500 ml',s:18,L:1,m:10,cv:1,d:1,f:[62,58,60,64,63],e:[4,5,3,3.5,6],a:59,ls:0,t:31,c:29},
+{n:'Bread',s:4,L:1,m:6,cv:1,d:1,f:[24,22,25,23,26],e:[3,3.5,2,3,4],a:22,ls:0,t:12,c:40},
+{n:'Maggi noodles',s:30,L:3,m:12,cv:7,d:2,f:[18,16,19,17,24],e:[2.5,3,2,2.8,4.5],a:16,ls:0,t:9,c:14},
+{n:'Parle-G biscuits',s:60,L:3,m:20,cv:7,d:2,f:[40,36,38,41,50],e:[4,5,3.5,4,7],a:36,ls:0,t:22,c:5},
+{n:'Water 1 L',s:20,L:2,m:12,cv:7,d:3,f:[30,28,31,29,33],e:[3,4,2.5,3,5],a:28,ls:0,t:14,c:18},
+{n:'Cooking oil 1 L',s:10,L:2,m:6,cv:7,d:0,f:[12,5,10,13,15],e:[2,1.5,2.2,2,3],a:4.8,ls:0,t:4,c:135},
+{n:'Tea 250 g',s:9,L:2,m:4,cv:7,d:0,f:[],e:[],a:3,ls:0,t:2,c:110,nw:1},
+{n:'Atta 5 kg',s:25,L:2,m:6,cv:7,d:0,f:[5,4.6,5,5.2,5.5],e:[.8,.9,.7,.8,1.2],a:4.6,ls:0,t:3,c:260},
+{n:'Detergent 1 kg',s:40,L:3,m:3,cv:7,d:0,f:[],e:[],a:.9,ls:3,t:0,c:95},
+{n:'Hair oil sachet',s:300,L:3,m:10,cv:7,d:0,f:[],e:[],a:.4,ls:21,t:0,c:2},
+{n:'Mango pickle',s:30,L:3,m:3,cv:7,d:0,f:[],e:[],a:.3,ls:18,t:0,c:85}];
+I.forEach(i=>{i.o=0});
+const M=['Last week','Steady (28 days)','Weekday pattern','Trend','Look-alike days'];
+let tab='home',role='owner',fest=false,off=false,pend=0,qn=1,sent=[],t0=null,csvR='';
+function calc(i){let w=null,b=i.a,sp=0,fl=false,conf='Low';
+if(!i.nw&&i.a>=1){const inv=i.e.map(x=>1/x),S=inv.reduce((x,y)=>x+y);w=inv.map(x=>Math.min(.6,Math.max(.05,x/S)));const S2=w.reduce((x,y)=>x+y);w=w.map(x=>x/S2);b=w.reduce((x,y,k)=>x+y*i.f[k],0);
+if(b>2*i.a&&!fest){b=2*i.a;fl=true}sp=Math.max(...i.f)-Math.min(...i.f);const r=sp/b;conf=r<=.2?'High':r<=.5?'Medium':'Low'}
+const ss=Math.min(Math.max(i.m,sp*i.L),7*b),rop=b*i.L+ss,q=Math.ceil(b*(i.L+i.cv)+ss-i.s-i.o),slow=i.ls>=14||i.s/b>30;
+return{w,b,sp,fl,conf,ss,rop,q,slow,go:!slow&&i.s+i.o<=rop&&q>0}}
+const R=()=>I.map((i,k)=>({i,k,c:calc(i)}));
+const qty=x=>x.i.eq!=null?x.i.eq:x.c.q;
+function toast(t){const e=document.getElementById('toast');e.textContent=t;e.className='on';setTimeout(()=>e.className='',1800)}
+function go(t){tab=t;if(t==='reorder'&&!t0)t0=Date.now();draw()}
+function setRole(r){role=r;tab=r==='helper'?'sale':'home';draw()}
+function sale(k){const i=I[k];i.s=Math.max(0,i.s-qn);i.t+=qn;i.ls=0;if(off)pend++;toast(`Saved: ${qn} × ${i.n}`+(off?' (on phone)':''));draw()}
+function eq(k,v){I[k].eq=Math.max(0,+v||0)}
+function share(d){const L=R().filter(x=>x.c.go&&x.i.d===d&&qty(x)>0);if(!L.length)return;
+const txt=`Order from Lakshmi General Store\n`+L.map(x=>`${x.i.n}: ${qty(x)}`).join('\n');
+try{window.open(`https://wa.me/${D[d][1]}?text=${encodeURIComponent(txt)}`,'_blank')}catch(e){}
+L.forEach(x=>{x.i.o+=qty(x);x.i.eq=null});sent.push(D[d][0]);const sec=Math.round((Date.now()-t0)/1000);t0=null;
+toast(`Saved as Sent · prepared in ${Math.floor(sec/60)} min ${sec%60} s`);draw()}
+function recv(k,v){const i=I[k],n=Math.max(0,+v||0);i.s+=n;i.o=Math.max(0,i.o-n);toast(`Stock updated: ${i.n} now ${i.s}`);draw()}
+function why(k){const i=I[k],c=calc(i),f=x=>x.toFixed(1);let h=`<h3>Why ${Math.max(0,qty({i,c}))} ${i.n}?</h3>`;
+if(!c.w)h+=`<p class="mut">Under 14 days of sales, or fewer than 1 sale a day. Uses the 28-day average only (${f(i.a)} a day). Low confidence.</p>`;
+else{h+=`<table><tr><th>Model</th><th>Units/day</th><th>Miss</th><th>Weight</th></tr>`+M.map((m,j)=>`<tr><td>${m}</td><td>${f(i.f[j])}</td><td>${i.e[j]}</td><td>${Math.round(c.w[j]*100)}%<div class="bar" style="width:${c.w[j]*100}%"></div></td></tr>`).join('')+`</table>`;
+h+=`<p><b>Blended forecast: ${c.b.toFixed(2)} a day</b> · <span class="pill ${c.conf}">${c.conf} confidence</span><br><span class="mut">Models disagree by ${f(c.sp)} units.</span></p>`;
+if(c.fl)h+=`<p class="pill Low">Forecast was more than double the 28-day average with no festival marked, so it is capped. Please check.</p>`}
+h+=`<p class="mut">Safety stock ${f(c.ss)} · reorder point ${f(c.rop)} · stock ${i.s} + on order ${i.o}<br>Quantity = ${c.b.toFixed(2)} × (${i.L} + ${i.cv} days) + ${f(c.ss)} − ${i.s} − ${i.o} = ${c.q} (rounded up)</p><button class="btn" data-a="close">Close</button>`;
+shc.innerHTML=h;sh.hidden=false}
+function csv(t){let ok=0,er=[];t.trim().split(/\r?\n/).slice(1).forEach((r,k)=>{const[d,n,q]=r.split(',').map(x=>x.trim());const it=I.find(i=>i.n.toLowerCase()===(n||'').toLowerCase());if(/^\d{4}-\d{2}-\d{2}$/.test(d)&&it&&+q>0&&Number.isInteger(+q))ok++;else er.push(`Row ${k+2}: ${r||'(empty)'}`)});
+csvR=`<b>${ok} rows saved, ${er.length} not saved.</b>`+(er.length?'<br>'+er.slice(0,5).join('<br>'):'');draw()}
+const sample=()=>csv('date,item,quantity\n2026-10-01,Sugar 1 kg,9\n2026-10-01,Amul Milk 500 ml,58\n2026-10-02,Bread,x\n2026-10-02,Atta 5 kg,5\n2026-10-03,Rice 1 kg,4');
+function pick(e){const f=e.target.files[0];if(f)f.text().then(csv)}
+function vHome(){const r=R(),a=r.filter(x=>x.c.go).length,b=r.filter(x=>x.c.slow).length;
+return `<h2>Tonight’s order is ready</h2><p class="mut">No shelf check needed. Review, change, send.</p>
+<div class="grid"><div class="card"><div class="big">${a}</div>Reorder today<br><button class="btn s" data-a="go" data-k="reorder">Open list</button></div><div class="card"><div class="big">${b}</div>Don’t reorder<br><button class="btn s" data-a="go" data-k="reorder">See why</button></div></div>
+<div class="card"><b>Orders sent today:</b> ${sent.length?sent.join(', '):'none yet'}<br><span class="mut">${R().filter(x=>x.i.o>0).length} items waiting for delivery</span></div>
+<div class="card"><h3>Set-up</h3><p class="mut">Upload past sales (date, item, quantity) so forecasts start on day one.</p>
+<input type="file" accept=".csv" data-c="pick"> <button class="btn s" data-a="sample">Try sample file</button><p class="mut">${csvR}</p>
+<label class="row"><span>Festival week<br><span class="mut">Product team setting. Lifts the forecast cap.</span></span><input type="checkbox" ${fest?'checked':''} data-c="fest"></label></div>`}
+function vSale(){const L=R().sort((x,y)=>y.i.t-x.i.t);
+return `<div class="chips" style="margin-bottom:12px">${[1,2,3,5].map(n=>`<button class="${n===qn?'on':''}" data-a="qn" data-k="${n}">${n}</button>`).join('')}</div>
+<label class="row" style="border:0;padding-top:0"><span class="mut">No network (sales save on phone)${pend?` · ${pend} waiting to send`:''}</span><input type="checkbox" ${off?'checked':''} data-c="off"></label>
+<div class="grid">${L.map(x=>`<button class="tile" data-a="sale" data-k="${x.k}">${x.i.n}<small>${x.i.t} sold today · ${x.i.s} left</small></button>`).join('')}</div>`}
+function vReorder(){const r=R(),G=D.map((d,k)=>{const L=r.filter(x=>x.c.go&&x.i.d===k);return L.length?`<div class="card"><h3>${d[0]}</h3>`+L.map(x=>`<div class="row"><div>${x.i.n}<br><span class="pill ${x.c.conf}">${x.c.conf}</span> <span class="mut">${x.i.s} left · arrives in ${x.i.L} d</span> <button class="btn s" data-a="why" data-k="${x.k}">Why?</button></div><input type="number" value="${qty(x)}" data-c="eq" data-k="${x.k}"></div>`).join('')+`<button class="btn" style="margin-top:8px" data-a="share" data-k="${k}">Share order on WhatsApp</button></div>`:''}).join('');
+const S=r.filter(x=>x.c.slow);
+return `<h2>Reorder today</h2>${G||'<p class="mut">Nothing to reorder. Orders are on the way.</p>'}<h2 style="margin-top:18px">Don’t reorder</h2><div class="card">${S.map(x=>`<div class="row"><div>${x.i.n}<br><span class="mut">${x.i.ls>=14?`No sale in ${x.i.ls} days`:`${Math.round(x.i.s/x.c.b)} days of stock`}</span></div><button class="btn s" data-a="why" data-k="${x.k}">Why?</button></div>`).join('')}</div>`}
+function vDel(){const L=R().filter(x=>x.i.o>0);return `<h2>Record a delivery</h2><p class="mut">Stock = old stock + delivered − sold.</p>`+(L.length?`<div class="card">${L.map(x=>`<div class="row"><div>${x.i.n}<br><span class="mut">${x.i.o} ordered · ${x.i.s} in stock</span></div><span><input type="number" id="d${x.k}" value="${x.i.o}"> <button class="btn s" data-a="recv" data-k="${x.k}">Save</button></span></div>`).join('')}</div>`:'<p class="mut">No open orders. Send an order first.</p>')}
+function vScore(){const r=R().filter(x=>x.c.w),av=a=>a.reduce((p,q)=>p+q,0)/a.length,simple=av(r.map(x=>x.i.e[1])),bl=av(r.map(x=>x.c.w.reduce((p,q,j)=>p+q*x.i.e[j],0))),cash=R().filter(x=>x.c.slow).reduce((p,x)=>p+x.i.s*x.i.c,0),oos=I.filter(i=>i.s===0).length;
+return `<h2>Weekly scorecard</h2><div class="card"><div class="big">${oos}</div>items out of stock now<br><span class="mut">Target: under 4% of item-days on top 20 items</span></div>
+<div class="card"><div class="big">${Math.round((1-bl/simple)*100)}%</div>lower forecast error than the simple average<br><span class="mut">${bl.toFixed(2)} vs ${simple.toFixed(2)} units missed per item per day. Target: at least 10%.</span></div>
+<div class="card"><div class="big">₹${cash.toLocaleString('en-IN')}</div>cash in slow stock<br><span class="mut">Target: 25% lower in 6 months</span></div>`}
+function draw(){const T=role==='helper'?[['sale','Sale']]:[['home','Home'],['sale','Sale'],['reorder','Reorder'],['del','Deliveries'],['score','Scorecard']];
+role_.innerHTML=['owner','helper'].map(r=>`<button class="${r===role?'on':''}" data-a="role" data-k="${r}">${r==='owner'?'Owner':'Helper'}</button>`).join('');
+nav.innerHTML=T.length>1?T.map(t=>`<button class="${t[0]===tab?'on':''}" data-a="go" data-k="${t[0]}">${t[1]}</button>`).join(''):'';
+v.innerHTML=({home:vHome,sale:vSale,reorder:vReorder,del:vDel,score:vScore})[tab]()}
+const role_=document.getElementById('role'),v=document.getElementById('v'),nav=document.getElementById('nav'),sh=document.getElementById('sh'),shc=document.getElementById('shc');
+document.addEventListener('click',e=>{const t=e.target.closest('[data-a]');if(t){const k=t.dataset.k,A={go:()=>go(k),sample:()=>sample(),qn:()=>{qn=+k;draw()},sale:()=>sale(+k),why:()=>why(+k),share:()=>share(+k),role:()=>setRole(k),close:()=>{sh.hidden=true},recv:()=>recv(+k,document.getElementById('d'+k).value)};A[t.dataset.a]()}else if(e.target===sh)sh.hidden=true});
+document.addEventListener('change',e=>{const t=e.target.closest('[data-c]');if(!t)return;const c=t.dataset.c;if(c==='pick')pick(e);else if(c==='fest'){fest=t.checked;draw()}else if(c==='off'){off=t.checked;if(!off)pend=0;draw()}else if(c==='eq')eq(+t.dataset.k,t.value)});
+draw();
+</script></body></html>

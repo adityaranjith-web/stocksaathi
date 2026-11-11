@@ -1,0 +1,131 @@
+// Dot-grid icons, drawn by hand on a 7 x 7 grid. "#" is a lit dot, "." is a faint dot.
+// Original artwork for StockSaathi. They use the current text colour, so they follow light and dark mode.
+
+const GRID = {
+  home: [
+    "...#...",
+    "..###..",
+    ".#####.",
+    "#######",
+    ".##.##.",
+    ".##.##.",
+    ".##.##.",
+  ],
+  sell: [
+    "..###..",
+    ".#...#.",
+    "#..#..#",
+    "#.###.#",
+    "#..#..#",
+    ".#...#.",
+    "..###..",
+  ],
+  reorder: [
+    ".......",
+    "#.#####",
+    ".......",
+    "#.#####",
+    ".......",
+    "#.#####",
+    ".......",
+  ],
+  stock: [
+    "#######",
+    "#.....#",
+    "#######",
+    "#.###.#",
+    "#.###.#",
+    "#.....#",
+    "#######",
+  ],
+  alert: [
+    "...#...",
+    "..#.#..",
+    "..#.#..",
+    ".#.#.#.",
+    ".#.#.#.",
+    "#.....#",
+    "#######",
+  ],
+  check: [
+    ".......",
+    "......#",
+    ".....#.",
+    "#...#..",
+    ".#.#...",
+    "..#....",
+    ".......",
+  ],
+  share: [
+    "...#...",
+    "..###..",
+    ".#.#.#.",
+    "...#...",
+    "...#...",
+    "#..#..#",
+    "#######",
+  ],
+  back: [
+    "....#..",
+    "...#...",
+    "..#....",
+    ".#.....",
+    "..#....",
+    "...#...",
+    "....#..",
+  ],
+  next: [
+    "..#....",
+    "...#...",
+    "....#..",
+    ".....#.",
+    "....#..",
+    "...#...",
+    "..#....",
+  ],
+  layers: [
+    "...#...",
+    "..###..",
+    ".#####.",
+    "#######",
+    ".#####.",
+    "..###..",
+    "...#...",
+  ],
+  plus: [
+    ".......",
+    "...#...",
+    "...#...",
+    ".#####.",
+    "...#...",
+    "...#...",
+    ".......",
+  ],
+  minus: [
+    ".......",
+    ".......",
+    ".......",
+    ".#####.",
+    ".......",
+    ".......",
+    ".......",
+  ],
+} as const;
+
+export type DotIconName = keyof typeof GRID;
+
+export default function DotIcon({ name, size = 24, className, label }: { name: DotIconName; size?: number; className?: string; label?: string }) {
+  const rows = GRID[name];
+  const dots: React.ReactNode[] = [];
+  rows.forEach((row, y) => {
+    [...row].forEach((c, x) => {
+      const on = c === "#";
+      dots.push(<circle key={`${x}-${y}`} cx={x * 2 + 1} cy={y * 2 + 1} r={on ? 0.82 : 0.28} opacity={on ? 1 : 0.35} />);
+    });
+  });
+  return (
+    <svg viewBox="0 0 14 14" width={size} height={size} fill="currentColor" className={className} role={label ? "img" : undefined} aria-label={label} aria-hidden={label ? undefined : true} focusable="false">
+      {dots}
+    </svg>
+  );
+}
