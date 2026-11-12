@@ -7,6 +7,7 @@ import Glass from "@/components/ui/Glass";
 import DotIcon from "@/components/ui/DotIcon";
 import { DotLabel } from "@/components/ui/DotText";
 import { requireOwner } from "@/lib/auth";
+import { SCREEN_HELP } from "@/lib/screen-help";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,8 @@ export default async function ReorderPage() {
     <div className="space-y-5">
       <div className="rise">
         <h1 className="text-2xl font-bold">Reorder today</h1>
-        <p className="text-sm text-ink-2">Based on sales up to {niceDate(desk.asOf)}. Edit any quantity, then share each order.</p>
+        <p className="text-sm text-ink-2">{SCREEN_HELP.reorder}</p>
+        <p className="text-xs text-ink-2">Based on sales up to {niceDate(desk.asOf)}.</p>
       </div>
       {groups.length ? <ReorderList groups={groups} shopName={shop.name} /> : <Glass blur={false} className="p-4">Nothing to reorder today.</Glass>}
 

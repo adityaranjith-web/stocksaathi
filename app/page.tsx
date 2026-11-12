@@ -7,6 +7,9 @@ import Button from "@/components/ui/Button";
 import DotIcon from "@/components/ui/DotIcon";
 import { DotLabel, DotNumber } from "@/components/ui/DotText";
 import { requireOwner } from "@/lib/auth";
+import { cookies } from "next/headers";
+import HowItWorks from "@/components/HowItWorks";
+import { HOW_IT_WORKS_COOKIE, SCREEN_HELP } from "@/lib/screen-help";
 
 export const dynamic = "force-dynamic";
 
@@ -18,15 +21,21 @@ export default async function Home() {
   const reorder = results.filter((r) => r.decision.status === "Reorder today").length;
   const dont = results.filter((r) => r.decision.status === "Don't reorder").length;
   const lowConf = results.filter((r) => r.decision.status === "Reorder today" && r.confidence === "Low").length;
+  // The "How StockSaathi works" card shows until the owner closes it (a cookie on this phone remembers).
+  const showHowTo = (await cookies()).get(HOW_IT_WORKS_COOKIE)?.value !== "1";
+  const d = (n: number) => n + (showHowTo ? 1 : 0); // the cards below slide in one step later when the card is there
 
   return (
     <div className="space-y-4">
       <div className="rise px-1">
         <h1 className="text-2xl font-bold leading-tight">{shop.name}</h1>
-        <p className="text-sm text-ink-2">{shop.locality} · forecast uses sales up to {niceDate(desk.asOf)}</p>
+        <p className="text-sm text-ink-2">{SCREEN_HELP.home}</p>
+        <p className="text-xs text-ink-2">{shop.locality} · forecast uses sales up to {niceDate(desk.asOf)}</p>
       </div>
 
-      <Glass as={Link} href="/reorder" dots delay={1} className="press block p-5">
+      {showHowTo && <HowItWorks delay={1} />}
+
+      <Glass as={Link} href="/reorder" dots delay={d(1)} className="press block p-5">
         <DotLabel>Reorder today</DotLabel>
         <div className="mt-3 flex items-end justify-between gap-3">
           <div className="flex items-baseline gap-2">
@@ -39,12 +48,12 @@ export default async function Home() {
       </Glass>
 
       <div className="grid grid-cols-2 gap-3">
-        <Glass as={Link} href="/reorder#dont" blur={false} delay={2} className="press block p-4">
+        <Glass as={Link} href="/reorder#dont" blur={false} delay={d(2)} className="press block p-4">
           <DotLabel>Don&apos;t reorder</DotLabel>
           <div className="mt-2"><DotNumber size={48}>{dont}</DotNumber></div>
           <p className="mt-1 text-xs text-ink-2">slow or overstocked</p>
         </Glass>
-        <Glass blur={false} delay={3} className="p-4">
+        <Glass blur={false} delay={d(3)} className="p-4">
           <DotLabel>Sold today</DotLabel>
           <div className="mt-2"><DotNumber size={48}>{desk.todaySales.units}</DotNumber></div>
           <p className="mt-1 text-xs text-ink-2">units · ₹{desk.todaySales.value.toLocaleString("en-IN")}</p>
@@ -52,24 +61,24 @@ export default async function Home() {
       </div>
 
       {lowConf > 0 && (
-        <Glass blur={false} alert delay={4} role="alert" className="flex items-start gap-3 p-4">
+        <Glass blur={false} alert delay={d(4)} role="alert" className="flex items-start gap-3 p-4">
           <span className="mt-0.5"><DotIcon name="alert" size={24} /></span>
           <p className="text-sm font-semibold">{lowConf} reorder item(s) have low confidence. Check them before sharing.</p>
         </Glass>
       )}
 
       <div className="grid grid-cols-2 gap-3">
-        <Glass as={Link} href="/deliveries" blur={false} delay={5} className="press block p-4">
+        <Glass as={Link} href="/deliveries" blur={false} delay={d(5)} className="press block p-4">
           <DotLabel>Deliveries</DotLabel>
           <p className="mt-2 text-sm"><span className="text-2xl font-bold">{Object.keys(desk.onOrder).length}</span> item(s) on order</p>
         </Glass>
-        <Glass as={Link} href="/scorecard" blur={false} delay={5} className="press block p-4">
+        <Glass as={Link} href="/scorecard" blur={false} delay={d(5)} className="press block p-4">
           <DotLabel>Scorecard</DotLabel>
           <p className="mt-2 text-sm">See how this week went</p>
         </Glass>
       </div>
 
-      <div className="rise" style={{ "--d": 6 } as React.CSSProperties}>
+      <div className="rise" style={{ "--d": d(6) } as React.CSSProperties}>
         <Button href="/sell" icon="sell" full>Record a sale</Button>
       </div>
     </div>

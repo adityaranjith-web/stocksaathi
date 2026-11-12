@@ -3,6 +3,7 @@ import { asOfDay } from "@/lib/dates";
 import { addDays } from "@/lib/forecast/desk";
 import SellGrid from "@/components/SellGrid";
 import { requireUser } from "@/lib/auth";
+import { SCREEN_HELP } from "@/lib/screen-help";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ export default async function SellPage() {
   return (
     <div>
       <h1 className="mb-1 text-2xl font-bold">Record a sale</h1>
-      <p className="mb-4 text-sm text-ink-2">Tap the item sold. Fastest sellers are at the top.</p>
+      <p className="mb-4 text-sm text-ink-2">{SCREEN_HELP.sell}</p>
       {/* A helper sees item names and pack sizes only (BRD section 7). The price is not even sent to their phone. */}
       <SellGrid items={sorted.map((i) => ({ id: i.id, name: i.name, pack: i.pack, price: me?.role === "owner" ? i.price : null }))} />
     </div>

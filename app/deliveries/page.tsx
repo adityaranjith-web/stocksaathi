@@ -1,5 +1,6 @@
 import { getStore } from "@/lib/data";
 import { requireOwner } from "@/lib/auth";
+import { SCREEN_HELP } from "@/lib/screen-help";
 import DeliveriesForm, { type DeliveryGroup } from "@/components/DeliveriesForm";
 import DeliveryForm from "@/components/DeliveryForm";
 import Glass from "@/components/ui/Glass";
@@ -25,7 +26,7 @@ export default async function DeliveriesPage() {
     <div className="space-y-4">
       <div className="rise px-1">
         <h1 className="text-2xl font-bold">Deliveries</h1>
-        <p className="text-sm text-ink-2">Items you have ordered. Check the quantities that arrived, then tap Save once.</p>
+        <p className="text-sm text-ink-2">{SCREEN_HELP.deliveries}</p>
       </div>
       {groups.length ? (
         <DeliveriesForm key={formKey} groups={groups} />
