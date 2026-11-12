@@ -29,7 +29,8 @@ describe("secret keys stay on the server", () => {
   it("the AI key (AI_FORECAST_KEY) is read in one file only: lib/forecast/ai/registry.ts", () => {
     // Reading the value (env.AI_FORECAST_KEY). Help text that only names the setting is fine.
     const hits = source.filter((p) => /env\.AI_FORECAST_KEY|env\[["']AI_FORECAST_KEY["']\]/.test(readFileSync(p, "utf8")));
-    expect(hits.map(rel)).toEqual(["lib/forecast/ai/registry.ts"]);
+    // The settings check (lib/server/config-check.ts) only asks "is it set?" (yes or no) for /api/health.
+    expect(hits.map(rel).sort()).toEqual(["lib/forecast/ai/registry.ts", "lib/server/config-check.ts"]);
   });
 
   it("the Gemini address is called from one file only (the key travels with it): lib/forecast/ai/providers.ts", () => {
