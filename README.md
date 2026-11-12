@@ -38,11 +38,12 @@ With no Supabase keys set, the app uses the Session 6 sample data (30 items, 1,6
 
 ## Go live (Supabase + Vercel, free tiers)
 
-1. Create a Supabase project. In the SQL editor, run `supabase/migrations/0001_schema.sql`, `0002_...sql`, `0003_roles_setup_scorecard_ai.sql`, `0004_nightly_job.sql`, then `supabase/seed.sql`.
-2. Supabase → Authentication → Providers → Google: turn it on and paste the Google OAuth client ID and secret (Google Cloud console → APIs & Services → Credentials). Add `https://<your-app>.vercel.app/auth/callback` as a redirect URL.
-3. Copy `.env.example` to `.env.local` and fill in the two Supabase values. Add the same two values in Vercel → Project → Settings → Environment Variables.
-4. Push to GitHub and import the repo in Vercel.
-5. Sign in once with the owner's Google account, then run the `insert into users ...` line at the bottom of `seed.sql` with that email.
+The full guide is **`docs/live-setup.md`**. In short:
+
+1. **Database.** In the Supabase SQL editor run `supabase/migrations/0001` to `0005` in order (then `supabase/seed.sql` for the demo shop). Open `https://YOUR-SITE/api/health`: it names any migration that is missing.
+2. **Google sign-in.** Google Cloud: an OAuth client whose redirect URI is `https://<project-ref>.supabase.co/auth/v1/callback` (and your Google account listed as a test user). Supabase: switch the Google provider on, set the Site URL, and add `https://<your-app>.vercel.app/auth/callback` (and a pattern for preview builds) to the Redirect URLs.
+3. **Vercel variables** (Settings → Environment Variables, Production and Preview, then redeploy): `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` (public); for the nightly job also `SUPABASE_SERVICE_ROLE_KEY` and `CRON_SECRET` (secrets, tick Sensitive).
+4. **First owner.** Sign in with Google once, then run `supabase/claim_demo_shop.sql` (with your email) in the SQL editor to become the owner of "Sri Balaji Stores". Anyone else who signs in without an invite sees **Create your shop** (with a short privacy notice) and gets their own empty shop. The owner can delete the account and all shop data at More → Your account.
 
 ## How the Forecast Desk works
 
@@ -58,12 +59,13 @@ The festival uplift percentages in the calendar (Deepavali +40% and so on) are t
 
 ## Checks done so far
 
-- `npm test`: 85 unit tests pass. The first 14 (BRD worked example, all business rules, 2,000 random weight sets, the 3 planted slow items) are unchanged. New: scorecard maths, order timer, set-up checks, AI plug-in rules, the nightly job and its secret check, and a scan that fails if a secret key shows up in browser code.
+- `npm test`: 93 unit tests pass. The first 14 (BRD worked example, all business rules, 2,000 random weight sets, the 3 planted slow items) are unchanged. New: scorecard maths, order timer, set-up checks, AI plug-in rules, the nightly job and its secret check, a scan that fails if a secret key shows up in browser code, the create-shop checks, and a check that the list of what the app expects from the database matches the migration files.
 - Phone-size browser test of every screen: sale, offline queue, reorder, WhatsApp share, delivery, CSV upload with 3 bad rows.
 - Database tested on PostgreSQL 16: schema and seed load; a second shop cannot see or change the first shop's data; a helper can record sales but cannot change prices or send orders; stock moves correctly with sales and deliveries.
 - Demo mode, new features: every screen opens as owner; as helper every screen except Sell redirects to Sell and every owner API answers 403; items, distributors, helpers, festival days, deliveries and AI runs tested through the API; order timer tested in the browser.
 - **Acceptance tests (BRD):** every FR and BR was run against the production build in demo mode: **18 pass, 3 partly, 0 fail** (the 3 "partly" need people or a shop: a hand count, an owner explaining the screen, and the forecast error re-computed by hand). Details, evidence and the failures found and fixed: `docs/acceptance-results.md`. Re-run any time: start the app (`npm run build && npm start`) and run `npm run acceptance` (it adds test data, so restart the server afterwards).
-- **Not yet tested:** migrations `0003` and `0004` and all live (Supabase) code, the Vercel cron, and a real Android phone. Run the migrations in a Supabase project and sign in as an owner and as a helper before relying on them.
+- **Live mode (database level):** `npm run db:test` applies migrations 0001 to 0005 to a real PostgreSQL and plays an owner, a second Google account, a helper and an anonymous visitor against the row-level security, "Create your shop", the claim script and "Delete my account": **17 of 17 pass** (`docs/live-db-results.md`). The same two-user test was run on the real Supabase project inside a transaction that always rolls back (nothing saved). It found and fixed two real bugs (removing a helper who had recorded sales; deleting a shop). `npm run acceptance:live` checks the signed-out side of the live app over HTTP (5 of 5 pass).
+- **Not yet tested:** a real **Google sign-in through the app** (so the signed-in checks in `scripts/acceptance-live.mjs`, including "a second Google account cannot see the first shop's data" through the app, are written but not run), the Vercel cron, and a real Android phone. Results: `docs/acceptance-results.md`, part 2.
 - **Open finding:** on the demo data the blended forecast is about 3% *worse* than the plain 28-day average (BRD wants at least 10% better, and says to fall back to the simple average if worse). The fallback is not built. See the last section of `docs/acceptance-results.md`.
 
 ## Testing with real users

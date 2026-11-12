@@ -17,6 +17,7 @@ npm install
 npm run dev      # demo mode at http://localhost:3000 when no Supabase keys are set
 npm test         # vitest (the 14 Forecast Desk tests plus tests for the scorecard, timer, set-up checks and AI plug-in)
 npm run build    # next build, also checks types and lint
+npm run db:test  # migrations + row-level security on a throw-away PostgreSQL (needs TEST_DATABASE_URL; see scripts/db-test.mjs)
 ```
 
 ## Layout
@@ -25,7 +26,9 @@ npm run build    # next build, also checks types and lint
 - `lib/desk-service.ts`: builds each item's sales series and runs the Desk for the shop.
 - `lib/data/`: `Store` interface with two versions: `demo.ts` (in memory, sample data) and `supabase.ts` (live, row-level security per shop).
 - `app/`: screens (`/sell`, `/reorder`, `/deliveries`, `/more`, `/stock`, `/scorecard`, `/item/[id]`, `/setup/*` for items, distributors, helpers and festival calendar, `/ai`, `/login`) and `app/api/*` routes.
-- `lib/auth.ts`: who is signed in. `requireOwner()` / `requireTeam()` for pages, `ownerOnly()` / `teamOnly()` for API routes. Every new owner-only page and route must use one.
+- `lib/auth.ts`: who is signed in (`getAccess()` gives ok, signed-out, no-shop or error; a broken database is never treated as signed-out). `/onboarding` is "Create your shop", `/setup/account` is sign-out and delete-account, `/api/health` is the live set-up self-check.
+- `lib/data/db-contract.json`: what the code expects from the Supabase database and which migration adds it. Update it when the code uses a new table, column or function; `lib/db-contract.test.ts` and `npm run db:test` check it. `docs/live-setup.md` has the live-mode steps and every environment variable.
+- `lib/auth.ts` (continued): `requireOwner()` / `requireTeam()` for pages, `ownerOnly()` / `teamOnly()` for API routes. Every new owner-only page and route must use one.
 - `lib/scorecard.ts`, `lib/prep-time.ts`, `lib/validate.ts`: pure maths and checks, with tests next to them.
 - `lib/nightly.ts` and `lib/server/`: the nightly job (Vercel cron -> `/api/cron/nightly`). `SUPABASE_SERVICE_ROLE_KEY` and `CRON_SECRET` are read only on the server (`lib/server/supabase-admin.ts`, the cron route). `lib/secrets.test.ts` enforces this. See `docs/nightly-job.md`.
 - `lib/forecast/ai/`: plug-in system for AI forecasts (off by default). See `docs/ai-integration.md`. AI settings are server-only.
@@ -35,5 +38,6 @@ npm run build    # next build, also checks types and lint
 
 - Only the owner can send orders or change stock, prices and settings. Helpers can only record sales (BR7). The database already enforces this; keep the screens in line with it.
 - Record no shopper personal data.
+- Every migration must pass `npm run db:test` before it is applied to Supabase. A new table needs row-level security and a test that a second shop cannot read it.
 - Demo mode (no Supabase keys) must keep working for every screen. Demo mode has an Owner / Helper switch at the top.
 - A helper sees only the Sell screen. New screens and API routes are owner-only unless they are about recording a sale.

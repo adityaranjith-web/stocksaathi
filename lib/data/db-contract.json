@@ -1,0 +1,132 @@
+{
+  "_note": "What the app code expects from the Supabase database, and which migration adds each piece. Read by /api/health, by lib/db-contract.test.ts and by scripts/db-test.mjs. Update it when the code starts using a new table, column or function.",
+  "tables": {
+    "shops": {
+      "id": "0001",
+      "name": "0001",
+      "locality": "0001"
+    },
+    "users": {
+      "id": "0001",
+      "shop_id": "0001",
+      "name": "0001",
+      "role": "0001",
+      "email": "0003",
+      "is_team": "0003",
+      "consented_at": "0005",
+      "consent_version": "0005"
+    },
+    "distributors": {
+      "id": "0001",
+      "shop_id": "0001",
+      "name": "0001",
+      "supplies": "0001",
+      "salesman": "0001",
+      "whatsapp": "0001",
+      "visit_day": "0001"
+    },
+    "items": {
+      "id": "0001",
+      "shop_id": "0001",
+      "distributor_id": "0001",
+      "name": "0001",
+      "category": "0001",
+      "pack": "0001",
+      "price": "0001",
+      "current_stock": "0001",
+      "lead_time_days": "0001",
+      "min_safety_stock": "0001",
+      "order_cover_days": "0001",
+      "is_active": "0001"
+    },
+    "sales": {
+      "id": "0001",
+      "shop_id": "0001",
+      "item_id": "0001",
+      "sale_date": "0001",
+      "quantity": "0001",
+      "entry_method": "0001",
+      "logged_by": "0001"
+    },
+    "orders": {
+      "id": "0001",
+      "shop_id": "0001",
+      "distributor_id": "0001",
+      "order_date": "0001",
+      "status": "0001",
+      "whatsapp_payload": "0001",
+      "prep_seconds": "0003"
+    },
+    "order_lines": {
+      "order_id": "0001",
+      "item_id": "0001",
+      "quantity": "0001",
+      "delivered": "0001"
+    },
+    "deliveries": {
+      "id": "0001",
+      "shop_id": "0001",
+      "item_id": "0001",
+      "quantity": "0001",
+      "received_on": "0001",
+      "order_id": "0001"
+    },
+    "conditions_calendar": {
+      "day": "0001",
+      "name": "0001",
+      "uplift_pct": "0001"
+    },
+    "model_forecasts": {
+      "shop_id": "0001",
+      "item_id": "0001",
+      "run_date": "0001",
+      "model": "0001",
+      "units_per_day": "0001"
+    },
+    "model_scores": {
+      "shop_id": "0001",
+      "item_id": "0001",
+      "run_date": "0001",
+      "model": "0001",
+      "error_14d": "0001",
+      "weight": "0001"
+    },
+    "final_forecasts": {
+      "shop_id": "0001",
+      "item_id": "0001",
+      "run_date": "0001",
+      "units_per_day": "0001",
+      "spread": "0001",
+      "confidence": "0001",
+      "status": "0001",
+      "order_qty": "0001",
+      "horizon_days": "0004"
+    },
+    "helper_invites": {
+      "id": "0003",
+      "shop_id": "0003",
+      "email": "0003",
+      "name": "0003"
+    },
+    "ai_forecasts": {
+      "shop_id": "0003",
+      "item_id": "0003",
+      "run_date": "0003",
+      "provider": "0003",
+      "ai_units_per_day": "0003",
+      "blend_units_per_day": "0003",
+      "horizon_days": "0003",
+      "low": "0003",
+      "high": "0003"
+    }
+  },
+  "functions": {
+    "my_shop": "0001",
+    "i_am_owner": "0001",
+    "my_item": "0001",
+    "claim_invite": "0003",
+    "i_am_team": "0003",
+    "create_shop": "0005",
+    "delete_my_account": "0005"
+  }
+}

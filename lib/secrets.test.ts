@@ -18,12 +18,12 @@ const source = ["app", "components", "lib"].flatMap((d) => files(path.join(ROOT,
 describe("secret keys stay on the server", () => {
   it("SUPABASE_SERVICE_ROLE_KEY is read in one file only: lib/server/supabase-admin.ts", () => {
     const hits = source.filter((p) => readFileSync(p, "utf8").includes("SUPABASE_SERVICE_ROLE_KEY"));
-    expect(hits.map(rel).filter((p) => p !== "lib/server/supabase-admin.ts" && p !== "lib/server/nightly-handler.ts")).toEqual([]);
+    expect(hits.map(rel).filter((p) => !["lib/server/supabase-admin.ts", "lib/server/nightly-handler.ts", "lib/server/config-check.ts"].includes(p))).toEqual([]);
   });
 
-  it("CRON_SECRET is read only by the nightly route", () => {
+  it("CRON_SECRET is read only by the nightly route and the server-only settings check", () => {
     const hits = source.filter((p) => /process\.env\.CRON_SECRET/.test(readFileSync(p, "utf8")));
-    expect(hits.map(rel)).toEqual(["app/api/cron/nightly/route.ts"]);
+    expect(hits.map(rel).sort()).toEqual(["app/api/cron/nightly/route.ts", "lib/server/config-check.ts"]);
   });
 
   it("no secret has a NEXT_PUBLIC_ name (those are sent to every browser)", () => {
@@ -39,7 +39,7 @@ describe("secret keys stay on the server", () => {
   });
 
   it("the server-only files refuse to load in a browser", () => {
-    for (const f of ["lib/server/supabase-admin.ts", "lib/server/nightly-supabase.ts", "lib/server/nightly-handler.ts"]) {
+    for (const f of ["lib/server/supabase-admin.ts", "lib/server/nightly-supabase.ts", "lib/server/nightly-handler.ts", "lib/server/config-check.ts"]) {
       expect(readFileSync(path.join(ROOT, f), "utf8")).toContain('typeof window !== "undefined"');
     }
   });

@@ -2,12 +2,12 @@ import { getStore } from "@/lib/data";
 import { asOfDay } from "@/lib/dates";
 import { addDays } from "@/lib/forecast/desk";
 import SellGrid from "@/components/SellGrid";
-import { getMe } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export default async function SellPage() {
-  const me = await getMe();
+  const me = await requireUser(); // owner or helper; anyone else is sent to sign in or to Create your shop
   const store = getStore();
   const [items, sales] = await Promise.all([store.listItems(), store.listSales(addDays(asOfDay(), -13))]);
   const sold = new Map<string, number>();

@@ -1,5 +1,7 @@
 # Acceptance test results (BRD FR1-FR10, BR1-BR7)
 
+**Two parts.** Part 1 is the full FR and BR run in **demo mode**. Part 2, at the end, is **live mode** (the database rules, a second user, and your real Supabase project). Live mode could not be run end to end through Google sign-in here: part 2 says exactly what was and was not covered.
+
 Run on **12 Nov 2026** against the **production build** (`npm run build` then `npm start`) in **demo mode** with the 30-item, 1,633-sale sample data. Script: `scripts/acceptance.mjs` (run it with `npm run acceptance`). Raw script output: `docs/acceptance-results-script.md`.
 
 **18 PASS, 3 PARTLY, 0 FAIL** out of 21 checks covering FR1-FR10 and BR1-BR7.
@@ -52,3 +54,74 @@ Run on **12 Nov 2026** against the **production build** (`npm run build` then `n
 ## Finding for the go-live decision (not an FR or BR)
 
 BRD section 8 says the app is ready to go live when "the Forecast Desk is no worse than the simple average (if it is worse, the app uses the simple average)", and the KPI target is at least 10% lower error. On the demo data the scorecard's back-test (last 7 days, each day forecast from earlier days only, top 20 items) shows the blend missing **2.65** units per item per day against **2.59** for the plain 28-day average: about **3% worse**. The "use the simple average if worse" fallback is **not built**. The demo data is synthetic, so this may not hold for a real shop, but the team should decide before 27 November: build the fallback, tune the models, or explain the result in the presentation. Check the scorecard again once the nightly job has saved real forecasts.
+
+---
+
+# Part 2: Live mode (Supabase)
+
+Run on **12 Nov 2026**. The FR/BR script in part 1 cannot run against live mode as it is (it drives demo item ids and needs no sign-in), so live mode was checked three other ways. **No one has signed in through the app with Google yet**, so the signed-in HTTP checks are written but **not run**.
+
+## A. The database rules on real PostgreSQL (`npm run db:test`): 17 of 17 pass
+
+All five migrations and the seed applied to an empty PostgreSQL 18.6 (Supabase runs 17), with stand-ins for Supabase's API roles and `auth.uid()`. Full table with evidence: `docs/live-db-results.md`.
+
+| Check | Result |
+|---|---|
+| D1 Migrations 0001 to 0005 and the seed apply in order | **PASS** |
+| D2 to D4 Every table, column, function and upsert key the code uses exists | **PASS** |
+| D5 `claim_demo_shop.sql` makes a signed-in user owner of "Sri Balaji Stores"; safe to run twice | **PASS** |
+| D6 The owner sees her own 30 items and 1,633 sales through row-level security | **PASS** |
+| D7 Create your shop: a new Google user becomes owner of a new empty shop, with a consent record | **PASS** |
+| D8 Create your shop refused: no consent, bad name, second shop, anonymous, invited helper | **PASS** |
+| **D9 A second Google account cannot see or change the first shop's data** (0 of her rows in 10 tables; cannot write into it, rename it, move into it, or use its item ids) | **PASS** |
+| D10 Anonymous visitors cannot read or write any shop data | **PASS** |
+| D11 Helpers (BR7): record sales only; orders, deliveries, items, invites, calendar, prices, own role and account deletion all refused | **PASS** |
+| D12 Owner removes a helper; access ends; one email, one shop | **PASS** (after a fix, see below) |
+| D13 Festival calendar (FR8): product team only | **PASS** |
+| D14 Orders and deliveries (FR3, FR7): stock rises, order closes, prep-time limits | **PASS** |
+| D15 Nightly job: the service key writes every shop; users read only their own | **PASS** |
+| D16 Delete my account removes the whole shop, the helpers and the sign-ins; nothing of another shop | **PASS** (after a fix) |
+| D17 The owner of the demo shop can delete it | **PASS** |
+
+**Two real bugs were found and fixed by these tests** (both in `0005`): removing a helper who had recorded a sale was blocked by a foreign key, and deleting a shop failed on a foreign-key check. Neither could be seen in demo mode.
+
+## B. The same checks on the REAL Supabase database (rolled back)
+
+After you approved applying `0003` to `0005` to project `stocksaathi`, a two-user test was run on it inside one transaction that ends in an error, so **nothing was saved**. Afterwards the project still had 0 sign-ins, 0 shop users, 1 shop, 30 items and 822 sales.
+
+| Check on the real project | Result |
+|---|---|
+| The claim script, run twice, makes a test user the owner of Sri Balaji Stores | **PASS** |
+| The owner sees 30 items and 822 sales | **PASS** |
+| A brand-new user sees 0 items, creates a shop (owner, consent recorded as 'DPDP-2026-11'), cannot create a second one, cannot skip consent | **PASS** |
+| **That second user sees 0 of the first shop's items and sales; cannot write into it, or record a sale on its item from her own shop; changed 0 and deleted 0 of its items; its price is unchanged** | **PASS** |
+| A helper joins through an invite, records a sale, and is refused orders, items and account deletion | **PASS** |
+| The owner removes a helper who has a sale: it works and the sale is kept | **PASS** |
+| An anonymous visitor is refused (reads and create_shop) | **PASS** |
+| Delete my account: a helper is refused, a wrong shop name is refused, then the shop and sign-in are gone and the first shop is untouched (30 items, 822 sales) | **PASS** |
+
+## C. The live app over HTTP (`npm run acceptance:live`), against the real project
+
+Run with a local copy of the app using your project's public URL and key. Details: `docs/live-http-results.md`.
+
+| Check | Result |
+|---|---|
+| L1 `/api/health`: database complete (after the migrations), settings present | **PASS** (before the migrations it correctly listed the 11 missing pieces) |
+| L2 Signed out: 12 screens and 8 write routes refuse a visitor and send them to sign in | **PASS** |
+| L3 The sign-in page offers Google | **PASS** |
+| L4 The nightly route is shut without the secret | **PASS** |
+| L5 Nothing public leaks a key | **PASS** |
+| O1 Signed-in owner sees the screens and items | **NOT RUN** (needs a real Google sign-in) |
+| **X1 and X2: a second Google account, through the app, cannot see or change the first shop's data** | **NOT RUN** (needs two real sign-ins). The same rule is proven at database level in A and B. |
+| H1 A helper sees only Sell, with no prices | **NOT RUN** (needs a real helper sign-in). Proven in demo mode (BR7b) and in the database (A, B). |
+
+To run O1, X1, X2 and H1 yourself: sign in with each account in a browser, copy the request's Cookie header into `ACCEPT_OWNER_COOKIE`, `ACCEPT_OTHER_COOKIE` and `ACCEPT_HELPER_COOKIE` in your own terminal (never in chat), then run `node scripts/acceptance-live.mjs --base=https://YOUR-SITE`. See the top of the script.
+
+## What this means for the BRD's go-live conditions
+
+| Condition | Status |
+|---|---|
+| "A second shop account cannot see the first shop's data" | **Proven at database level on real PostgreSQL and on your real Supabase project.** The through-the-app check with two Google accounts is still to do (X1 and X2). |
+| Helpers record sales only; owner-only actions (BR7) | Proven in the database (A, B) and in the app in demo mode. Live app check still to do (H1). |
+| Delete account and all data (BRD section 7) | Proven in the database (A, B). The screen is built; not yet clicked through with a real account. |
+| DPDP consent at sign-up | Built and stored (date and notice version) and proven in the database. Helpers do not see a consent notice yet: only the owner's Create your shop screen has one. |

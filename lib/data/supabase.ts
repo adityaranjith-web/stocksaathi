@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { todayIST } from "@/lib/dates";
 import type { CalendarDay } from "@/lib/forecast/desk";
 import { rowToItem } from "./rows";
+import { AccessError, SetupError, setupMessage } from "./errors";
 import type { AiForecastRow, DistributorInput, Helper, ImportResult, ImportRow, Item, ItemInput, Me, OpenOrder, OrderRecord, SavedForecast, Store } from "./types";
 
 export async function supabaseServer() {
@@ -21,17 +22,28 @@ export async function supabaseServer() {
 
 const USER_COLUMNS = "id, shop_id, role, name, is_team";
 
+/**
+ * Who is signed in, and which shop are they in?
+ * Throws AccessError("signed-out") or AccessError("no-shop") for the two normal cases, and SetupError when the
+ * database itself is wrong (for example a migration was not run). A wrong database is never mistaken for "signed out".
+ */
 async function me() {
   const sb = await supabaseServer();
   const { data: auth } = await sb.auth.getUser();
-  if (!auth.user) throw new Error("Not signed in");
-  let { data: user } = await sb.from("users").select(USER_COLUMNS).eq("id", auth.user.id).maybeSingle();
+  if (!auth.user) throw new AccessError("signed-out");
+  const find = () => sb.from("users").select(USER_COLUMNS).eq("id", auth.user!.id).maybeSingle();
+  let { data: user, error } = await find();
+  if (error) throw new SetupError(setupMessage(error.message));
   if (!user) {
     // A helper who signs in for the first time: the owner's invite (by Google email) links them to the shop.
-    const { data: claimed } = await sb.rpc("claim_invite");
-    if (claimed) ({ data: user } = await sb.from("users").select(USER_COLUMNS).eq("id", auth.user.id).maybeSingle());
+    const { data: claimed, error: e2 } = await sb.rpc("claim_invite");
+    if (e2) throw new SetupError(setupMessage(e2.message));
+    if (claimed) {
+      ({ data: user, error } = await find());
+      if (error) throw new SetupError(setupMessage(error.message));
+    }
   }
-  if (!user) throw new Error("This Google account is not linked to a shop yet");
+  if (!user) throw new AccessError("no-shop");
   return { sb, user };
 }
 
@@ -47,6 +59,20 @@ export const supabaseStore: Store = {
   async getMe(): Promise<Me> {
     const { user } = await me();
     return { name: user.name, role: user.role, isTeam: Boolean(user.is_team) };
+  },
+  async createShop(name, locality, consent) {
+    const sb = await supabaseServer();
+    const { data: auth } = await sb.auth.getUser();
+    if (!auth.user) throw new AccessError("signed-out");
+    const { data, error } = await sb.rpc("create_shop", { p_name: name, p_locality: locality, p_consent: consent });
+    if (error) throw new Error(/create_shop/.test(error.message) && /not exist|schema cache|find the function/i.test(error.message) ? setupMessage(error.message) : error.message);
+    return { shopId: data as string };
+  },
+  async deleteMyAccount(confirmName) {
+    const { sb } = await me();
+    const { error } = await sb.rpc("delete_my_account", { p_confirm: confirmName });
+    if (error) throw new Error(error.message);
+    await sb.auth.signOut(); // the sign-in record is already gone; this clears the cookies in this browser
   },
   async getShop() {
     const { sb, user } = await me();

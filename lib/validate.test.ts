@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkCalendarDay, checkDistributor, checkEmail, checkItem } from "./validate";
+import { checkCalendarDay, checkDistributor, checkEmail, checkItem, checkShop } from "./validate";
 
 const goodItem = { name: " Sugar 1 kg ", category: "Staples", pack: "1 kg", price: "45.50", distributorId: "D01", leadTimeDays: "2", minSafetyStock: 4, orderCoverDays: 7, openingStock: "12" };
 
@@ -48,5 +48,20 @@ describe("festival calendar checks", () => {
     expect(checkCalendarDay({ date: "2026-13-45", name: "X", upliftPct: 10 })).toMatchObject({ ok: false });
     expect(checkCalendarDay({ date: "2026-11-08", name: "", upliftPct: 10 })).toMatchObject({ ok: false });
     expect(checkCalendarDay({ date: "2026-11-08", name: "X", upliftPct: 500 })).toMatchObject({ ok: false });
+  });
+});
+
+describe("create your shop checks", () => {
+  it("needs a name of 2 to 80 characters, a short place, and a yes to the privacy notice", () => {
+    expect(checkShop({ name: "  Lakshmi Stores ", locality: " Adyar ", consent: true })).toEqual({ ok: true, value: { name: "Lakshmi Stores", locality: "Adyar", consent: true } });
+    expect(checkShop({ name: "L", consent: true })).toMatchObject({ ok: false });
+    expect(checkShop({ name: "x".repeat(81), consent: true })).toMatchObject({ ok: false });
+    expect(checkShop({ name: "Lakshmi", locality: "y".repeat(81), consent: true })).toMatchObject({ ok: false });
+    expect(checkShop({ name: "Lakshmi" })).toMatchObject({ ok: false });
+    expect(checkShop({ name: "Lakshmi", consent: "true" })).toMatchObject({ ok: false }); // must be a real yes
+    expect(checkShop(null)).toMatchObject({ ok: false });
+  });
+  it("the place may be left empty", () => {
+    expect(checkShop({ name: "Lakshmi", consent: true })).toMatchObject({ ok: true, value: { locality: "" } });
   });
 });

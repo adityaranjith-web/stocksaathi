@@ -21,6 +21,7 @@ export default async function MorePage() {
     { href: "/setup/helpers", icon: "people", title: "Helpers", text: "Let someone record sales with their Google account" },
   ];
   if (me.isTeam) setup.push({ href: "/setup/calendar", icon: "calendar", title: "Festival calendar", text: "Product team: mark festival and holiday dates" });
+  const privacy: Entry[] = [{ href: "/setup/account", icon: "alert", title: "Your account", text: "Sign out, or delete your account and all shop data" }];
   const extra: Entry[] = [{ href: "/ai", icon: "ai", title: "AI forecasts", text: getAiMode() === "off" ? "Switched off. See how to turn it on" : "Second opinion from an AI model" }];
 
   const group = (label: string, rows: Entry[], d: number) => (
@@ -47,6 +48,7 @@ export default async function MorePage() {
       {group("Reports", reports, 1)}
       {group("Set-up", setup, 2)}
       {group("Coming next", extra, 3)}
+      {group("Privacy", privacy, 4)}
     </div>
   );
 }

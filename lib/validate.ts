@@ -53,3 +53,14 @@ export function checkCalendarDay(body: unknown): Checked<CalendarDay> {
   if (!(upliftPct >= 0 && upliftPct <= 200)) return { ok: false, error: "Extra sales must be between 0% and 200%." };
   return { ok: true, value: { date, name, upliftPct } };
 }
+
+/** "Create your shop" (first sign-in): the shop name, where it is, and a yes to the privacy notice. */
+export function checkShop(body: unknown): Checked<{ name: string; locality: string; consent: true }> {
+  const b = (body ?? {}) as Record<string, unknown>;
+  const name = text(b.name, 200);
+  if (name.length < 2 || name.length > 80) return { ok: false, error: "The shop name must be 2 to 80 characters." };
+  const locality = text(b.locality, 200);
+  if (locality.length > 80) return { ok: false, error: "The place must be 80 characters or fewer." };
+  if (b.consent !== true) return { ok: false, error: "Please tick the box to agree to the privacy notice." };
+  return { ok: true, value: { name, locality, consent: true } };
+}

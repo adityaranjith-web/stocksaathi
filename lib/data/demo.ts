@@ -62,6 +62,8 @@ export const demoStore: Store = {
     const who = raw.users.find((u) => u.role === role);
     return { name: who?.name ?? role, role, isTeam: role === "owner" };
   },
+  async createShop() { throw new Error("Demo mode has no accounts. Connect a Supabase project to create a shop."); },
+  async deleteMyAccount() { throw new Error("Demo mode has no accounts to delete. Restart the server to reset the demo data."); },
   async getShop(): Promise<Shop> { return raw.shop; },
   async listItems() { return state().items; },
   async listDistributors(): Promise<Distributor[]> { return state().distributors; },

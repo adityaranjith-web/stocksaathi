@@ -1,0 +1,23 @@
+<!-- made by scripts/db-test.mjs on real PostgreSQL 18.6 (Supabase runs 17) on 2026-11-12 -->
+
+| ID | Live-mode database check | Result | Evidence |
+|---|---|---|---|
+| D1 | Migrations 0001 to 0005 and the seed apply cleanly, in order, on an empty database | **PASS** | 0001_schema.sql, 0002_lock_down_helper_functions.sql, 0003_roles_setup_scorecard_ai.sql, 0004_nightly_job.sql, 0005_onboarding_and_account_deletion.sql applied; seed loaded 1 shop and 1633 sales. |
+| D2 | Every table, column and function the app code uses exists | **PASS** | 14 tables with 90 columns and 7 functions all present. |
+| D3 | The code only uses tables and database functions this check knows about | **PASS** | Code uses 13 tables and 3 database functions (claim_invite, create_shop, delete_my_account), all covered. |
+| D4 | Every upsert in the app names columns that are a primary key or unique index | **PASS** | 5 upsert targets checked. |
+| D5 | claim_demo_shop.sql makes a signed-in user the owner of "Sri Balaji Stores"; it is safe to run twice | **PASS** | Alice is now the owner of "Sri Balaji Stores" (ran twice, one users row). |
+| D6 | The owner sees her own shop's items and sales through row-level security | **PASS** | Alice sees 30 items, 1633 sales and 1 shop. |
+| D7 | Create your shop: a new Google user becomes owner of a new empty shop, with a consent record | **PASS** | Bala owns "Bala Provision Store" (Adyar); consent DPDP-2026-11 recorded; name and email taken from the Google sign-in. |
+| D8 | Create your shop is refused: no consent, bad name, a second shop, anonymous, an invited helper | **PASS** | No consent, short or long name, long locality, a second shop, anonymous callers and invited helpers are all refused with a plain message. |
+| D9 | A second Google account cannot see or change the first shop's data | **PASS** | Bala (shop 2) sees 0 of Alice's rows in 10 tables, cannot write into her shop, rename it, move herself in, or use her item ids; Alice cannot see Bala's items or distributors either. (role: owner) |
+| D10 | Anonymous visitors cannot read or write any shop data | **PASS** | 13 tables give an error or no rows, a sale is refused, and the five functions are not callable without signing in. (The festival calendar is readable by design.) |
+| D11 | Helpers: invited by Google email, they can record sales and nothing else (BR7) | **PASS** | Chitra joined as a helper through her invite; her sale of 2 cut stock 48 -> 46; orders, deliveries, items, distributors, invites, the calendar, prices, her own role and account deletion are all refused. |
+| D12 | Owner removes a helper; the helper loses access; an email can belong to one shop only | **PASS** | Removing Chitra cut off her access at once and she cannot rejoin; the same email cannot be invited into two shops; an owner row cannot be deleted through the API. |
+| D13 | Festival calendar: only product-team owners can change it (FR8); everyone signed in can read it | **PASS** | A normal owner is refused; after is_team = true the owner can add and change a day; other shops read it but cannot delete it. |
+| D14 | Orders and deliveries under RLS: stock rises and the order closes (FR3, FR7) | **PASS** | Order saved with prep time 95 s; delivery of 24 took stock 46 -> 70 and closed the order; a prep time of 99,999 s is refused. |
+| D15 | Nightly job: the service key can write every shop's forecasts; signed-in users can only read their own | **PASS** | The service role wrote 5 model forecasts, 5 scores and 1 final forecast per item for 2 nights in 2 shops (upserts, so a re-run replaces them). Each owner sees only her own; users cannot write these tables. |
+| D16 | Delete my account: owner only, must type the shop name, removes the whole shop, helpers and sign-ins, and nothing of any other shop | **PASS** | Bala's shop, items, distributors, sales (including the helper's), orders, order lines, deliveries, helper invites, forecasts, AI forecasts, the helper's login and Bala's login are all gone; Alice's shop is exactly as before (30 items, 1634 sales, 1 users) and the shared calendar is untouched. A helper, a wrong name, an empty name and another shop's name were all refused. |
+| D17 | The owner of the demo shop can delete it too, leaving other data alone | **PASS** | The demo shop with its 30 items and all its sales was deleted in one call (no foreign-key blocks), together with the owner's login. |
+
+17 passed, 0 failed.
