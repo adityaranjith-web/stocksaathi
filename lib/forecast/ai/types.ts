@@ -25,7 +25,25 @@ export interface AiForecastResult {
 }
 
 export interface Forecaster {
-  id: string; // saved with every forecast, e.g. "mock" or "http"
+  id: string; // saved with every forecast, e.g. "mock", "http" or "gemini"
   name: string; // shown on screen
   forecast(request: AiForecastRequest): Promise<AiForecastResult>;
+  /**
+   * Optional: answer several items in ONE call, which keeps a free plan's request limit safe.
+   * Returns the answers by item id. An item the model did not answer (or answered badly) is simply missing.
+   * Throws AiUnavailableError when the service cannot be used right now.
+   */
+  forecastMany?(requests: AiForecastRequest[]): Promise<Map<string, AiForecastResult>>;
+}
+
+/**
+ * The AI service cannot be used right now: the free limit is used up ("limit") or it is down, slow or refuses
+ * the key ("error"). The app treats this as normal: it stops asking, keeps the Forecast Desk, and shows no error.
+ * The message is safe to log: it never holds the key or any shop data.
+ */
+export class AiUnavailableError extends Error {
+  constructor(message: string, readonly reason: "limit" | "error") {
+    super(message);
+    this.name = "AiUnavailableError";
+  }
 }

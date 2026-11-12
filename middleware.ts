@@ -24,7 +24,8 @@ export async function middleware(req: NextRequest) {
   const { data } = await sb.auth.getUser();
   // /api/cron/* is called by Vercel's scheduler, which has no Google sign-in. The route checks CRON_SECRET itself.
   // /api/health is the set-up self-check; it must work even when sign-in does not. It returns no data and no keys.
-  const open = ["/login", "/auth", "/api/cron/", "/api/health"].some((p) => req.nextUrl.pathname.startsWith(p));
+  // /api/demo-login is the "Demo login" form's route: it is for people who are not signed in yet (and accepts two emails only).
+  const open = ["/login", "/auth", "/api/cron/", "/api/health", "/api/demo-login"].some((p) => req.nextUrl.pathname.startsWith(p));
   if (!data.user && !open) return NextResponse.redirect(new URL("/login", req.url));
   return res;
 }

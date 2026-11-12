@@ -8,5 +8,6 @@ export function settingsPresent() {
     NEXT_PUBLIC_SUPABASE_ANON_KEY: Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
     SUPABASE_SERVICE_ROLE_KEY: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY), // needed by the nightly job only
     CRON_SECRET: Boolean(process.env.CRON_SECRET), // needed by the nightly job only
+    DEMO_LOGIN: Boolean(process.env.DEMO_OWNER_EMAIL && process.env.DEMO_HELPER_EMAIL), // both demo emails are set (the "Demo login" form)
   };
 }

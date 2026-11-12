@@ -26,20 +26,31 @@ describe("secret keys stay on the server", () => {
     expect(hits.map(rel).sort()).toEqual(["app/api/cron/nightly/route.ts", "lib/server/config-check.ts"]);
   });
 
+  it("the AI key (AI_FORECAST_KEY) is read in one file only: lib/forecast/ai/registry.ts", () => {
+    // Reading the value (env.AI_FORECAST_KEY). Help text that only names the setting is fine.
+    const hits = source.filter((p) => /env\.AI_FORECAST_KEY|env\[["']AI_FORECAST_KEY["']\]/.test(readFileSync(p, "utf8")));
+    expect(hits.map(rel)).toEqual(["lib/forecast/ai/registry.ts"]);
+  });
+
+  it("the Gemini address is called from one file only (the key travels with it): lib/forecast/ai/providers.ts", () => {
+    const hits = source.filter((p) => readFileSync(p, "utf8").includes("generativelanguage.googleapis.com"));
+    expect(hits.map(rel)).toEqual(["lib/forecast/ai/providers.ts"]);
+  });
+
   it("no secret has a NEXT_PUBLIC_ name (those are sent to every browser)", () => {
-    const bad = source.filter((p) => /NEXT_PUBLIC_[A-Z_]*(SERVICE_ROLE|CRON|SECRET|AI_FORECAST_KEY)/.test(readFileSync(p, "utf8")));
+    const bad = source.filter((p) => /NEXT_PUBLIC_[A-Z_]*(SERVICE_ROLE|CRON|SECRET|AI_FORECAST_KEY|GEMINI|PASSWORD|DEMO)/.test(readFileSync(p, "utf8")));
     expect(bad.map(rel)).toEqual([]);
   });
 
   it("no browser (\"use client\") file imports server-only code", () => {
     const clients = source.filter((p) => /^\s*["']use client["']/.test(readFileSync(p, "utf8")));
-    const bad = clients.filter((p) => /from\s+["']@\/lib\/(server\/|nightly["']|forecast\/ai\/(registry|providers|shadow))/.test(readFileSync(p, "utf8")));
+    const bad = clients.filter((p) => /from\s+["']@\/lib\/(server\/|nightly["']|demo-login["']|forecast\/ai\/(registry|providers|shadow|run))/.test(readFileSync(p, "utf8")));
     expect(bad.map(rel)).toEqual([]);
     expect(clients.length).toBeGreaterThan(5); // the scan really found the client files
   });
 
   it("the server-only files refuse to load in a browser", () => {
-    for (const f of ["lib/server/supabase-admin.ts", "lib/server/nightly-supabase.ts", "lib/server/nightly-handler.ts", "lib/server/config-check.ts"]) {
+    for (const f of ["lib/server/supabase-admin.ts", "lib/server/nightly-supabase.ts", "lib/server/nightly-handler.ts", "lib/server/config-check.ts", "lib/forecast/ai/registry.ts", "lib/forecast/ai/providers.ts"]) {
       expect(readFileSync(path.join(ROOT, f), "utf8")).toContain('typeof window !== "undefined"');
     }
   });

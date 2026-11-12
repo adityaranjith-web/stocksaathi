@@ -14,7 +14,9 @@ For each active item, with `run_date` = the last complete day (yesterday, India 
 
 Saving the same night twice replaces the rows. It never doubles them. One shop failing does not stop the others.
 
-The job uses the same code as the screens (`runShopDesk` in `lib/desk-service.ts`), so a saved forecast equals what the reorder list showed that night. A test checks this. AI forecasts are not part of the nightly job.
+The job uses the same code as the screens (`runShopDesk` in `lib/desk-service.ts`), so a saved forecast equals what the reorder list showed that night. A test checks this.
+
+**AI second opinion (optional):** when `AI_MODE` is `shadow` or `blend` and an AI provider is set up (see `docs/ai-integration.md`), the job also asks the AI for each item **after** the rows above are saved, and saves the answers to `ai_forecasts` (one row per item, day and provider; saving twice replaces). It has its own 40-second limit inside the route's 60 seconds and stops asking when the free limit is reached. An AI problem never fails the job and never loses the Forecast Desk rows: it only shows in the job's answer as `"ai": { "provider", "saved", "failed", "stopped" }` (`stopped` is `limit`, `error`, `time` or `null`).
 
 ## How the scorecard uses it
 

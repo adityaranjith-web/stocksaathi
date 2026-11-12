@@ -33,7 +33,8 @@ npm run db:test  # migrations + row-level security on a throw-away PostgreSQL (n
 - `lib/auth.ts` (continued): `requireOwner()` / `requireTeam()` for pages, `ownerOnly()` / `teamOnly()` for API routes. Every new owner-only page and route must use one.
 - `lib/scorecard.ts`, `lib/prep-time.ts`, `lib/validate.ts`: pure maths and checks, with tests next to them.
 - `lib/nightly.ts` and `lib/server/`: the nightly job (Vercel cron -> `/api/cron/nightly`). `SUPABASE_SERVICE_ROLE_KEY` and `CRON_SECRET` are read only on the server (`lib/server/supabase-admin.ts`, the cron route). `lib/secrets.test.ts` enforces this. See `docs/nightly-job.md`.
-- `lib/forecast/ai/`: plug-in system for AI forecasts (off by default). See `docs/ai-integration.md`. AI settings are server-only.
+- `lib/forecast/ai/`: plug-in system for AI forecasts (off by default; providers `mock`, `http`, `gemini`). See `docs/ai-integration.md`. AI settings are server-only. `AI_FORECAST_KEY` is read only in `registry.ts`. An AI failure or a reached free limit must never show an error to the owner or stop the nightly job (`run.ts`). In shadow mode the AI never changes an order.
+- `lib/demo-login.ts`, `app/api/demo-login/route.ts`, `components/DemoLoginForm.tsx`: the "Demo login" (email + password) for exactly two accounts named by `DEMO_OWNER_EMAIL` / `DEMO_HELPER_EMAIL`. Never put a password in code or settings; Supabase holds them (`docs/live-setup.md`, section 8). Migration 0007 keeps demo accounts from deleting the shop.
 - `supabase/migrations/`, `supabase/seed.sql`: database schema and sample data.
 
 ## Business rules to respect

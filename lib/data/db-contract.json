@@ -14,7 +14,8 @@
       "email": "0003",
       "is_team": "0003",
       "consented_at": "0005",
-      "consent_version": "0005"
+      "consent_version": "0005",
+      "is_demo": "0007"
     },
     "distributors": {
       "id": "0001",

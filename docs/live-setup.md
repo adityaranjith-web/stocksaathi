@@ -14,7 +14,11 @@ Vercel → your project → **Settings → Environment Variables → Add**. For 
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Live mode (required) | Supabase → Project Settings → API Keys → **Publishable key** (`sb_publishable_...`), or the legacy `anon` key. **Not** the service-role or secret key. | No. It is meant to be public. |
 | `SUPABASE_SERVICE_ROLE_KEY` | Nightly job only | Supabase → Project Settings → API Keys → **Secret key** (or legacy `service_role`) | **Yes.** Tick **Sensitive**. It skips all row-level security. |
 | `CRON_SECRET` | Nightly job only | Make one: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` (16 characters or more) | **Yes.** Tick **Sensitive**. |
-| `AI_MODE`, `AI_FORECASTER`, `AI_FORECAST_URL`, `AI_FORECAST_KEY` | Optional AI forecasts | `docs/ai-integration.md` | `AI_FORECAST_KEY` is |
+| `DEMO_OWNER_EMAIL`, `DEMO_HELPER_EMAIL` | Optional "Demo login" form for reviewers (section 8) | The two email addresses of the demo owner and demo helper users you create in Supabase. **Not** passwords. | No (they are shown nowhere, but are not secret keys) |
+| `AI_MODE` | Optional AI second opinion | `shadow` (see `docs/ai-integration.md`) | No |
+| `AI_FORECASTER` | Optional AI second opinion | `gemini` (or `mock`, `http`) | No |
+| `AI_FORECAST_KEY` | AI with Gemini (required) or an `http` service (optional) | Google AI Studio → Get API key | **Yes.** Tick **Sensitive**. |
+| `AI_GEMINI_MODEL`, `AI_FORECAST_URL` | Optional | `docs/ai-integration.md` | No |
 
 Rules: the two secrets must **not** start with `NEXT_PUBLIC_`; they are read only in server code (`lib/server/`, the cron route), and a test fails if they appear anywhere a browser could see them. Without `SUPABASE_SERVICE_ROLE_KEY` and `CRON_SECRET` the app works; only the nightly job is off.
 
@@ -32,11 +36,20 @@ Your project had **no sign-in records at all** (`auth.users` empty), so Google s
 
 If sign-in fails the app now says so: the sign-in page shows "Sign-in did not finish" (and the cause is in the Vercel log), or "Google sign-in could not start" if the provider is off.
 
+### Check Google sign-in end to end (do this once, in this order)
+
+1. Open `https://YOUR-SITE/api/health`. You want `"mode": "live"` and `"ok": true`. If it says `demo`, the two `NEXT_PUBLIC_SUPABASE_*` settings are missing on this deployment (section 1).
+2. Open `https://YOUR-SITE/login` in a **private window**. You see **Sign in with Google**. Tap it.
+3. Google asks you to choose an account. If it says "access blocked" or "this app is not verified": add your account under Google Cloud → OAuth consent screen → **Test users** (step 2 above).
+4. Google sends you back to the app. You should land on **Create your shop** (a new person) or on **Home** (if you are already linked). If you land back on the sign-in page with "Sign-in did not finish", the redirect URL is not on Supabase's list (step 4 above).
+5. Prove the sign-in really happened. In Supabase → SQL editor run `select email, created_at, last_sign_in_at from auth.users;` You should see your email. Nothing else is needed from the app.
+6. Do **not** fill in Create your shop. Close the tab and do section 4 (become the owner of Sri Balaji Stores).
+
 ## 3. Database migrations
 
-Run the files in `supabase/migrations/` **in order** in the Supabase SQL editor: `0001`, `0002`, `0003`, `0004`, `0005`, `0006`. `supabase/seed.sql` adds the demo shop and is optional.
+Run the files in `supabase/migrations/` **in order** in the Supabase SQL editor: `0001`, `0002`, `0003`, `0004`, `0005`, `0006`, `0007`. `supabase/seed.sql` adds the demo shop and is optional.
 
-**Status of your project `stocksaathi`:** `0001` and `0002` were applied earlier. `0003`, `0004`, `0005` and `0006` (the speed migration) were applied on 12 Nov 2026 (with your permission) and `/api/health` then reported nothing missing. Your 30 items and 822 sales were not changed. What was missing before is in `docs/migration-audit.md`.
+**Status of your project `stocksaathi`:** `0001` and `0002` were applied earlier. `0003`, `0004`, `0005` and `0006` (the speed migration) were applied on 12 Nov 2026 (with your permission) and `/api/health` then reported nothing missing. `0007` (protects the demo accounts) was applied later the same day, also with your permission. Your 30 items and 822 sales were not changed. What was missing before is in `docs/migration-audit.md`.
 
 ## 4. Become the owner of "Sri Balaji Stores"
 
@@ -72,3 +85,56 @@ The owner can delete everything at **More → Your account → Delete my account
 ## 7. Accepted warnings from Supabase's security check
 
 Supabase's advisor lists 7 **SECURITY DEFINER functions that signed-in users can run** (`my_shop`, `i_am_owner`, `i_am_team`, `my_item`, `claim_invite`, `create_shop`, `delete_my_account`). This is on purpose: row-level security rules need the first four, and the other three are the sign-up, invite and delete steps. Each one checks `auth.uid()` and the caller's role inside, and none is runnable without signing in (checked on the real project). No warnings about anonymous access.
+
+## 8. Demo login for reviewers (two accounts, email and password)
+
+Reviewers (faculty) should not need a personal Google account. The sign-in page can show a **Demo login** form next to the Google button. It accepts **exactly two accounts**: one **owner** and one **helper** of "Sri Balaji Stores". **No password is in the code, in GitHub or in a setting.** Supabase keeps and checks the passwords. Any other email is refused by the app before Supabase is even asked.
+
+### Create the two accounts (about 5 minutes)
+
+1. Supabase → **Authentication → Users → Add user → Create new user**. Make two users, each with an email and a **password you choose** (12 or more characters; the link is public, so make them strong). **Tick "Auto Confirm User"** so no email is sent. The emails can be any addresses you like, for example `demo.owner@stocksaathi.test` and `demo.helper@stocksaathi.test`. (If Supabase refuses an address, use two inboxes you own, for example `yourname+owner@gmail.com` and `yourname+helper@gmail.com`.)
+2. Run migration `0007_demo_accounts.sql` if you have not (section 3). It makes the demo owner unable to delete the shop and stops anyone removing the demo helper.
+3. Supabase → SQL editor → paste `supabase/link_demo_accounts.sql`, change the two emails on the lines marked `CHANGE THIS` to the two emails from step 1, and run it. It joins the owner and the helper to "Sri Balaji Stores". It is safe to run twice. **Do not commit this file with your real emails in it.**
+4. Vercel → Settings → Environment Variables: add `DEMO_OWNER_EMAIL` and `DEMO_HELPER_EMAIL` (the same two emails, **not** the passwords), tick Production and Preview, then **redeploy**. Without both variables the Demo login form is hidden.
+5. Open `/login`. Under the Google button you see **Demo login**. Sign in as the owner: you see Home with the reorder list. Sign out (More → Your account) and sign in as the helper: you see only the Sell screen, with no prices.
+6. Check `/api/health`: `DEMO_LOGIN` should be `true`.
+
+Give the faculty the two emails and passwords **in the submission document, not in GitHub**.
+
+### What a demo account can and cannot do
+
+| | Demo owner | Demo helper |
+|---|---|---|
+| Sees | Everything an owner sees | Only the Sell screen, no prices |
+| Can change | Items, stock, orders, deliveries (as a normal owner) | Record sales only |
+| Cannot | **Delete the shop** (refused by the database) and cannot remove the demo helper | Anything owner-only (403) |
+
+If a demo account is not linked to the shop yet, or has the wrong role, the Demo login signs the person out again and says so in plain words, so a reviewer can never end up creating a shop by accident.
+
+### Keeping it safe
+
+- Choose strong passwords. Supabase limits repeated tries from one address. Only two emails can be tried at all.
+- After the review: Supabase → Authentication → Users → delete the two demo users (their rows in the shop are removed with them), or remove `DEMO_OWNER_EMAIL` and `DEMO_HELPER_EMAIL` in Vercel and redeploy to hide the form.
+- Reviewers share one demo shop. If someone changes stock or items, reset with `supabase/seed.sql` on a fresh project, or simply accept the change.
+
+## 9. Make the Vercel production link public (no Vercel login)
+
+A link asks for a Vercel login for one of two reasons. Check both.
+
+**A. There is no Production deployment yet.** The `main` branch of your repository is empty (all work is on feature branches, and the rules forbid pushing straight to `main`), so Vercel has only built **Preview** deployments, and Preview links are protected. Fix: merge your branch into `main` with a pull request.
+1. Push the branch (in your own terminal): `git push -u origin feature/demo-login-and-ai`.
+2. On GitHub open **Pull requests → New pull request**, base `main`, compare `feature/demo-login-and-ai` → **Create pull request** → **Merge pull request**.
+3. Vercel builds `main` as **Production**. Vercel → your project → **Domains** shows the public name, for example `https://stocksaathi.vercel.app`. That is the link to submit, not the long `stocksaathi-git-feature-...vercel.app` Preview links.
+
+**B. Deployment Protection is on.** Vercel → your project → **Settings → Deployment Protection**.
+1. Set **Vercel Authentication** to **Disabled**. (Or keep **Standard Protection**: on current Vercel plans this leaves your production domain public and protects only the long per-deployment links. Disabled is the simplest and is what a public class project needs.)
+2. Leave **Password Protection** and **Trusted IPs** off (they are paid features).
+3. Save. Open the production link in a **private window**. You should see the StockSaathi sign-in page, not a Vercel login.
+
+Then make sure the production link works end to end:
+- The environment variables (section 1, and `DEMO_*` and `AI_*` if you use them) are ticked for **Production**. Variables ticked only for Preview do nothing on `main`.
+- Supabase → Authentication → URL Configuration: **Site URL** is the production address and `https://YOUR-PRODUCTION-ADDRESS/auth/callback` is in **Redirect URLs**.
+- Open `https://YOUR-PRODUCTION-ADDRESS/api/health` (it must say `"mode": "live"` and `"ok": true`).
+- The nightly job (`vercel.json` cron) runs **only on Production**, so it starts working after step A.
+
+The link is public, but the data is not: nobody can read the shop without signing in, and the sign-in is either Google or one of the two demo accounts (see section 8).

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Live-mode database tests on REAL PostgreSQL. Applies migrations 0001 to 0005 and the seed in order, then plays
+// Live-mode database tests on REAL PostgreSQL. Applies migrations 0001 to 0007 and the seed in order, then plays
 // different people against the row-level security and the two onboarding functions.
 //
 //   TEST_DATABASE_URL=postgres://postgres:postgres@localhost:54329/postgres npm run db:test
@@ -435,6 +435,45 @@ async function main() {
     return "Same " + oldR.n.toLocaleString("en-IN") + " rows visible. Old policy: " + oldR.calls.toLocaleString("en-IN") + " calls to my_shop(), " + oldR.ms + " ms. New policy: " + newR.calls + " call, " + newR.ms + " ms.";
   });
 
+  await test("D22", "Demo login accounts: link_demo_accounts.sql joins them to the demo shop; the demo owner cannot delete the shop; the demo helper cannot be removed (0007)", async () => {
+    const demo = {
+      owner: { id: "f6666666-6666-4666-8666-666666666666", email: "demo.owner@example.com", name: "Demo owner" },
+      helper: { id: "f7777777-7777-4777-8777-777777777777", email: "demo.helper@example.com", name: "Demo helper" },
+    };
+    await as.admin();
+    const script = read("supabase/link_demo_accounts.sql");
+    await refused(script, [], /Change the two emails/); // the placeholders must be replaced
+    const withEmails = (o, h) => script.replace("DEMO_OWNER_EMAIL@YOUR-DOMAIN", o).replace("DEMO_HELPER_EMAIL@YOUR-DOMAIN", h);
+    await refused(withEmails(demo.owner.email, demo.helper.email), [], /No user with the email/); // not created in Supabase yet
+    for (const p of Object.values(demo)) await c.query("insert into auth.users (id, email, raw_user_meta_data) values ($1,$2,$3)", [p.id, p.email, JSON.stringify({})]);
+    await refused(withEmails(demo.owner.email, demo.owner.email), [], /two different emails/);
+    await c.query(withEmails(demo.owner.email, demo.helper.email));
+    await c.query(withEmails(demo.owner.email, demo.helper.email)); // twice
+    const linked = await q("select id, role, is_demo, shop_id from users where id in ($1,$2) order by role", [demo.owner.id, demo.helper.id]);
+    assert(linked.length === 2 && linked[0].role === "helper" && linked[1].role === "owner" && linked.every((u) => u.is_demo && u.shop_id === demoShop), `got ${JSON.stringify(linked)}`);
+    assert((await q("select count(*)::int n from users where is_demo")).at(0).n === 2, "only the two demo accounts may be marked demo");
+
+    // the demo owner sees the demo shop's items and sales, like any owner
+    await as.user(demo.owner);
+    assert((await q("select count(*)::int n from items"))[0].n === 30, "the demo owner does not see the 30 items");
+    await refused("select delete_my_account('Sri Balaji Stores')", [], /demo account cannot delete/);
+    assert((await rows("delete from users where id = $1", [demo.helper.id])) === 0, "the demo owner removed the demo helper");
+    // the real owner cannot remove the demo helper either (it would break the reviewers' login)
+    await as.user(people.alice);
+    assert((await rows("delete from users where id = $1", [demo.helper.id])) === 0, "the demo helper was removed");
+    // the demo helper is a normal helper: sees items, cannot do owner things
+    await as.user(demo.helper);
+    assert((await q("select count(*)::int n from items"))[0].n === 30, "the demo helper does not see the items");
+    await refused("select delete_my_account('Sri Balaji Stores')", [], /demo account cannot delete/); // refused for two reasons; the demo one comes first
+    assert((await rows("update items set price = 1 where id = $1", [aliceItem])) === 0, "the demo helper changed a price");
+    // nobody can mark themselves as demo or un-mark a demo account through the API
+    await as.user(people.bala);
+    assert((await rows("update users set is_demo = true where id = $1", [people.bala.id])) === 0, "a user marked herself as demo");
+    await as.admin();
+    // a normal owner still deletes a normal helper (rule unchanged for everyone else)
+    return "The script refuses placeholders, missing users and equal emails; runs twice with 2 users rows (owner + helper, both is_demo, in the demo shop); the demo owner sees 30 items but delete_my_account is refused; nobody can remove the demo helper; the demo helper has helper rights only.";
+  });
+
   await test("D16", "Delete my account: owner only, must type the shop name, removes the whole shop, helpers and sign-ins, and nothing of any other shop", async () => {
     // give Bala's shop everything: a helper (claimed), an unclaimed invite, orders, deliveries, sales, AI forecasts
     await as.user(people.bala);
@@ -508,7 +547,7 @@ async function main() {
 }
 
 function report() {
-  results.sort((a, b) => parseInt(a.id.slice(1), 10) - parseInt(b.id.slice(1), 10)); // D1, D2, ... D21
+  results.sort((a, b) => parseInt(a.id.slice(1), 10) - parseInt(b.id.slice(1), 10)); // D1, D2, ... D22
   const lines = ["| ID | Live-mode database check | Result | Evidence |", "|---|---|---|---|"];
   for (const r of results) lines.push(`| ${r.id} | ${r.title} | **${r.status}** | ${r.evidence.replace(/\|/g, "/").replace(/\n/g, " ")} |`);
   const fails = results.filter((r) => r.status === "FAIL").length;

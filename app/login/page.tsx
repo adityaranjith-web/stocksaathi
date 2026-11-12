@@ -1,4 +1,6 @@
 import LoginButton from "@/components/LoginButton";
+import DemoLoginForm from "@/components/DemoLoginForm";
+import { demoAccounts } from "@/lib/demo-login";
 import Glass from "@/components/ui/Glass";
 import Button from "@/components/ui/Button";
 import DotIcon from "@/components/ui/DotIcon";
@@ -19,7 +21,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <p className="text-ink-2">Your daily reorder list. Sign in with the Google account on your shop phone.</p>
         {error && <p role="alert" className="glass-alert rounded-[16px] border p-3 text-sm font-semibold">{PROBLEMS[error] ?? PROBLEMS.signin}</p>}
         {isLive ? (
-          <LoginButton />
+          <>
+            <LoginButton />
+            {demoAccounts() && <DemoLoginForm />}
+          </>
         ) : (
           <>
             <p className="text-sm font-semibold">This is demo mode. No sign-in is needed.</p>

@@ -58,5 +58,13 @@ export function supabaseNightlyDb(sb: SupabaseClient): NightlyDb {
       await upsert("model_scores", rows.modelScores, "item_id,run_date,model");
       await upsert("final_forecasts", rows.finalForecasts, "item_id,run_date");
     },
+
+    async saveAiRows(shopId, rows) {
+      // One day, one item, one AI provider = one row. Saving again the same day replaces it.
+      await upsert("ai_forecasts", rows.map((r) => ({
+        shop_id: shopId, item_id: r.itemId, run_date: r.runDate, provider: r.provider, ai_units_per_day: r.aiUnitsPerDay,
+        blend_units_per_day: r.blendUnitsPerDay, horizon_days: r.horizonDays, low: r.low, high: r.high,
+      })), "item_id,run_date,provider");
+    },
   };
 }

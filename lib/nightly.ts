@@ -4,7 +4,9 @@
 import { addDays, type CalendarDay, type DeskResult } from "@/lib/forecast/desk";
 import { asOfDay } from "@/lib/dates";
 import { runShopDesk } from "@/lib/desk-service";
-import type { Item, Sale } from "@/lib/data/types";
+import { collectAiForecasts } from "@/lib/forecast/ai/run";
+import type { Forecaster } from "@/lib/forecast/ai/types";
+import type { AiForecastRow, Item, Sale } from "@/lib/data/types";
 
 /** Days of sales the Forecast Desk looks at (the same as when a screen opens). */
 export const NIGHTLY_LOOKBACK_DAYS = 56;
@@ -52,18 +54,31 @@ export interface NightlyDb {
   loadShop(shopId: string, salesSince: string): Promise<ShopData>;
   /** Saves rows. Saving the same night twice replaces the rows, it never doubles them. */
   saveRows(rows: NightlyRows): Promise<void>;
+  /** Saves AI second-opinion rows for one shop (shadow mode). Only needed when an AI provider is set up. */
+  saveAiRows?(shopId: string, rows: AiForecastRow[]): Promise<void>;
 }
 
 export interface NightlySummary {
   runDate: string; shops: number; skippedShops: number; failedShops: number; items: number; rows: number;
+  /** The AI second opinion. It never makes the job fail: a busy or out-of-limit AI just shows up here. */
+  ai: { provider: string | null; saved: number; failed: number; stopped: "limit" | "error" | "time" | null };
 }
+
+/** The AI step must finish well inside the route's 60 seconds (app/api/cron/nightly/route.ts). */
+export const NIGHTLY_AI_BUDGET_MS = 40_000;
 
 /**
  * Runs the Forecast Desk for every shop. One shop failing never stops the others: the failure is logged
  * (with the shop's id, never any secret) and counted in failedShops.
  */
-export async function runNightly(db: NightlyDb, runDate: string = asOfDay()): Promise<NightlySummary> {
-  const summary: NightlySummary = { runDate, shops: 0, skippedShops: 0, failedShops: 0, items: 0, rows: 0 };
+export async function runNightly(
+  db: NightlyDb, runDate: string = asOfDay(),
+  opts: { forecaster?: Forecaster | null; aiBudgetMs?: number; now?: () => number } = {},
+): Promise<NightlySummary> {
+  const forecaster = opts.forecaster ?? null;
+  const now = opts.now ?? Date.now;
+  const aiDeadline = now() + (opts.aiBudgetMs ?? NIGHTLY_AI_BUDGET_MS);
+  const summary: NightlySummary = { runDate, shops: 0, skippedShops: 0, failedShops: 0, items: 0, rows: 0, ai: { provider: forecaster?.id ?? null, saved: 0, failed: 0, stopped: null } };
   const since = addDays(runDate, -(NIGHTLY_LOOKBACK_DAYS - 1));
   const ids = await db.listShopIds();
   for (const shopId of ids) {
@@ -77,10 +92,32 @@ export async function runNightly(db: NightlyDb, runDate: string = asOfDay()): Pr
       summary.shops++;
       summary.items += rows.finalForecasts.length;
       summary.rows += rows.modelForecasts.length + rows.modelScores.length + rows.finalForecasts.length;
+      // The Forecast Desk rows are safe. Now, if an AI is set up, ask it for a second opinion. Whatever happens here,
+      // it never fails the shop or the job: the Desk's own rows above are already saved.
+      if (forecaster && db.saveAiRows && summary.ai.stopped !== "limit" && summary.ai.stopped !== "time") {
+        await runAiStep(db, forecaster, shopId, data, results, runDate, aiDeadline, now, summary);
+      }
     } catch (e) {
       summary.failedShops++;
       console.error(`nightly: shop ${shopId} failed: ${(e as Error).message}`);
     }
   }
   return summary;
+}
+
+async function runAiStep(
+  db: NightlyDb, forecaster: Forecaster, shopId: string, data: ShopData, results: Map<string, DeskResult>,
+  runDate: string, deadline: number, now: () => number, summary: NightlySummary,
+) {
+  try {
+    const got = await collectAiForecasts({ forecaster, items: data.items, results, sales: data.sales, calendar: data.calendar, onOrder: data.onOrder, asOf: runDate, runDate, deadline, now });
+    if (got.rows.length) await db.saveAiRows!(shopId, got.rows);
+    summary.ai.saved += got.rows.length;
+    summary.ai.failed += got.failed;
+    if (got.stopped) summary.ai.stopped = got.stopped;
+    if (got.firstError) console.error(`nightly: AI second opinion for shop ${shopId}: ${got.failed} item(s) without an answer. First reason: ${got.firstError}`);
+  } catch (e) {
+    summary.ai.stopped = "error";
+    console.error(`nightly: AI second opinion for shop ${shopId} could not be saved: ${(e as Error).message}`);
+  }
 }

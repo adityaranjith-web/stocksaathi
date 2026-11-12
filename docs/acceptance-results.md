@@ -59,11 +59,11 @@ BRD section 8 says the app is ready to go live when "the Forecast Desk is no wor
 
 # Part 2: Live mode (Supabase)
 
-Run on **12 Nov 2026**. The FR/BR script in part 1 cannot run against live mode as it is (it drives demo item ids and needs no sign-in), so live mode was checked three other ways. **No one has signed in through the app with Google yet**, so the signed-in HTTP checks are written but **not run**.
+Run on **12 Nov 2026**. The FR/BR script in part 1 cannot run against live mode as it is (it drives demo item ids and needs no sign-in), so live mode was checked other ways. Sections A to C were run first, before any sign-in was possible; **section D** ran the signed-in checks later the same day with temporary email-and-password logins (no real Google sign-in has been done through the app yet).
 
-## A. The database rules on real PostgreSQL (`npm run db:test`): 17 of 17 pass
+## A. The database rules on real PostgreSQL (`npm run db:test`): 22 of 22 pass
 
-All five migrations and the seed applied to an empty PostgreSQL 18.6 (Supabase runs 17), with stand-ins for Supabase's API roles and `auth.uid()`. Full table with evidence: `docs/live-db-results.md`.
+All seven migrations and the seed applied to an empty PostgreSQL 18.6 (Supabase runs 17), with stand-ins for Supabase's API roles and `auth.uid()`. Full table with evidence: `docs/live-db-results.md`. The table below was written for the first 17 checks; D18 to D21 (speed migration 0006) and D22 (demo accounts, migration 0007) were added later and are in `docs/live-db-results.md`.
 
 | Check | Result |
 |---|---|
@@ -111,17 +111,36 @@ Run with a local copy of the app using your project's public URL and key. Detail
 | L3 The sign-in page offers Google | **PASS** |
 | L4 The nightly route is shut without the secret | **PASS** |
 | L5 Nothing public leaks a key | **PASS** |
-| O1 Signed-in owner sees the screens and items | **NOT RUN** (needs a real Google sign-in) |
-| **X1 and X2: a second Google account, through the app, cannot see or change the first shop's data** | **NOT RUN** (needs two real sign-ins). The same rule is proven at database level in A and B. |
-| H1 A helper sees only Sell, with no prices | **NOT RUN** (needs a real helper sign-in). Proven in demo mode (BR7b) and in the database (A, B). |
+| O1 Signed-in owner sees the screens and items | **PASS** on 12 Nov 2026, see section D (9 screens, 30 items) |
+| **X1 and X2: a second account, through the app, cannot see or change the first shop's data** | **PASS** on 12 Nov 2026, twice: once with a second account that has no shop, once with a second account that owns its own shop. See section D. |
+| H1 A helper sees only Sell, with no prices | **PASS** on 12 Nov 2026, see section D |
 
 To run O1, X1, X2 and H1 yourself: sign in with each account in a browser, copy the request's Cookie header into `ACCEPT_OWNER_COOKIE`, `ACCEPT_OTHER_COOKIE` and `ACCEPT_HELPER_COOKIE` in your own terminal (never in chat), then run `node scripts/acceptance-live.mjs --base=https://YOUR-SITE`. See the top of the script.
+
+## D. The signed-in live checks, now run (12 Nov 2026)
+
+These were "NOT RUN" in section C until a way to sign in without a personal Google account existed. They ran on a local copy of the app connected to the **real** Supabase project `stocksaathi`, using **three temporary logins** (an owner and a helper of "Sri Balaji Stores", and a stranger) made with your permission. The owner and helper signed in **through the new Demo login form** (`POST /api/demo-login`); the stranger signed in with Supabase directly. Afterwards all three logins, the stranger's shop and the test AI rows were deleted, and the project was checked: 0 sign-ins, 0 shop users, 1 shop, 30 items, 822 sales, 0 AI rows (as before). Full table: `docs/live-http-results.md`.
+
+| Check | Result | Evidence |
+|---|---|---|
+| **O1** Signed-in owner: screens open and show the shop's items | **PASS** | 9 screens open; 30 items |
+| **H1** A helper sees only Sell, with no prices | **PASS** | 8 owner screens redirect to `/sell`; 5 owner actions answer 403; the Sell screen shows no ₹ price |
+| **X1** A second account does not see the first shop's items, sales or orders | **PASS** | 8 screens of the second account checked against 25 item names of the first shop: none appear (run with the stranger at "Create your shop", and again with the stranger owning a shop) |
+| **X2** The second account cannot read, record sales on, or change the first shop's items | **PASS** | Stranger with no shop: item page 307, sale 400, edit 403. Stranger with a shop: item page 404, sale 400, edit 400. The first shop's stock stayed at 48. |
+| DL1 The sign-in page has the Google button and a "Demo login" form | **PASS** | |
+| DL2 Another email and a wrong password get the same refusal | **PASS** | both 401, "The demo email or password is not right." |
+| DL3 Demo owner and demo helper sign in | **PASS** | both 200, a session cookie each |
+| DL4/DL5 Demo owner opens Home; demo helper is sent to Sell | **PASS** | 200; redirect to `/sell` |
+| DL6 The demo owner cannot delete the shop (migration 0007) | **PASS** | 400 "The demo account cannot delete the shop." (tried with a wrong shop name, so nothing could be deleted even if the rule had failed) |
+| AI1 to AI5 AI second opinion on the real database (practice model, shadow mode) | **PASS** | a helper cannot run the AI (403); the owner's run saved 30 rows; Why this number then shows "AI second opinion" and "For checking only. It does not change your order." |
+
+**Not covered:** a sign-in through the real Google button (the Google sign-in itself is checked with you, see `docs/live-setup.md` section 2), the real Vercel deployment, and a real Gemini call (no key exists yet; the Gemini request and its failure handling are tested with a fake service, `lib/forecast/ai/gemini.test.ts`).
 
 ## What this means for the BRD's go-live conditions
 
 | Condition | Status |
 |---|---|
-| "A second shop account cannot see the first shop's data" | **Proven at database level on real PostgreSQL and on your real Supabase project.** The through-the-app check with two Google accounts is still to do (X1 and X2). |
-| Helpers record sales only; owner-only actions (BR7) | Proven in the database (A, B) and in the app in demo mode. Live app check still to do (H1). |
+| "A second shop account cannot see the first shop's data" | **Proven at database level (real PostgreSQL and the real Supabase project) and through the live app (X1, X2, section D).** Still not done with a second real *Google* account. |
+| Helpers record sales only; owner-only actions (BR7) | Proven in the database (A, B), in demo mode, and through the live app with a helper login (H1, section D). |
 | Delete account and all data (BRD section 7) | Proven in the database (A, B). The screen is built; not yet clicked through with a real account. |
 | DPDP consent at sign-up | Built and stored (date and notice version) and proven in the database. Helpers do not see a consent notice yet: only the owner's Create your shop screen has one. |

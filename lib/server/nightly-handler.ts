@@ -2,6 +2,7 @@
 // Vercel calls the route once a day with the header  Authorization: Bearer <CRON_SECRET>  when CRON_SECRET is set.
 import { createHash, timingSafeEqual } from "node:crypto";
 import { runNightly, type NightlyDb } from "@/lib/nightly";
+import type { Forecaster } from "@/lib/forecast/ai/types";
 
 if (typeof window !== "undefined") throw new Error("The nightly job runs on the server only.");
 
@@ -17,7 +18,7 @@ export function isAuthorized(header: string | null, secret: string | undefined):
 
 const json = (body: unknown, status: number) => Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
 
-export async function handleNightly(req: Request, deps: { secret: string | undefined; makeDb: () => NightlyDb; runDate?: string }): Promise<Response> {
+export async function handleNightly(req: Request, deps: { secret: string | undefined; makeDb: () => NightlyDb; runDate?: string; forecaster?: Forecaster | null }): Promise<Response> {
   // No secret, or a weak one: the route stays shut. It is never open by accident.
   if (!deps.secret || deps.secret.length < MIN_SECRET_LENGTH) {
     return json({ error: `The nightly job is switched off: set CRON_SECRET (at least ${MIN_SECRET_LENGTH} characters).` }, 503);
@@ -31,7 +32,7 @@ export async function handleNightly(req: Request, deps: { secret: string | undef
     return json({ error: (e as Error).message }, 503);
   }
   try {
-    const summary = await runNightly(db, deps.runDate);
+    const summary = await runNightly(db, deps.runDate, { forecaster: deps.forecaster ?? null });
     // 500 when any shop failed, so the problem shows up in the Vercel cron log. The shops that worked are saved.
     return json({ ok: summary.failedShops === 0, ...summary }, summary.failedShops === 0 ? 200 : 500);
   } catch (e) {

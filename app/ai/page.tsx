@@ -51,8 +51,11 @@ export default async function AiPage() {
         {mode === "off" && (
           <p className="pt-1 text-sm text-ink-2">
             Nothing is sent anywhere. To try it, set <b>AI_MODE=shadow</b> and <b>AI_FORECASTER=mock</b> in the server settings (Vercel → Settings → Environment Variables), then redeploy.
-            The steps for a real AI service are in <b>docs/ai-integration.md</b>.
+            The steps for a real AI (Google Gemini has a free plan) are in <b>docs/ai-integration.md</b>.
           </p>
+        )}
+        {mode !== "off" && !forecaster && (
+          <p className="pt-1 text-sm text-ink-2">The AI is switched on but not set up fully. Check AI_FORECASTER and, for Gemini, AI_FORECAST_KEY in the server settings. Orders are not affected: they use the Forecast Desk.</p>
         )}
       </Glass>
 

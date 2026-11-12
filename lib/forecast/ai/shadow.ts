@@ -1,13 +1,20 @@
 // Runs the AI provider over every item and keeps the answers next to the Forecast Desk's own forecast.
-// Nothing here changes an order. SERVER ONLY.
-import { addDays } from "@/lib/forecast/desk";
+// Nothing here changes an order. An AI problem (free limit used up, service down, bad answer) is not an error
+// for the owner: the run just saves what it got and says it stopped early. SERVER ONLY.
 import { asOfDay } from "@/lib/dates";
-import { buildSeries, computeShopDesk } from "@/lib/desk-service";
-import type { AiForecastRow, Store } from "@/lib/data/types";
-import { buildAiRequest } from "./payload";
+import { computeShopDesk } from "@/lib/desk-service";
+import type { Store } from "@/lib/data/types";
+import { collectAiForecasts } from "./run";
 import { getAiMode, getForecaster } from "./registry";
 
-export interface ShadowRunSummary { provider: string; runDate: string; saved: number; failed: number; firstError: string | null }
+export interface ShadowRunSummary {
+  provider: string; runDate: string; saved: number; failed: number; firstError: string | null;
+  /** Why the run stopped early, if it did: "limit" (free limit used up), "error" (service not working), "time". */
+  stopped: "limit" | "error" | "time" | null;
+}
+
+/** Cap for one tap of the button. The page's function runs for at most 60 seconds (see app/api/ai/run/route.ts). */
+const RUN_BUDGET_MS = 45_000;
 
 export async function runShadow(store: Store): Promise<ShadowRunSummary> {
   const forecaster = getForecaster();
@@ -15,29 +22,21 @@ export async function runShadow(store: Store): Promise<ShadowRunSummary> {
 
   const desk = await computeShopDesk(store, { useAi: false }); // the pure Forecast Desk answer, for a fair comparison
   const runDate = asOfDay();
-  const rows: AiForecastRow[] = [];
-  let failed = 0;
-  let firstError: string | null = null;
-
-  const work = desk.items.map((item) => async () => {
-    const result = desk.results.get(item.id)!;
-    const horizonDays = item.leadTimeDays + item.orderCoverDays;
-    const request = buildAiRequest({
-      item,
-      input: { itemId: item.id, leadTimeDays: item.leadTimeDays, minSafetyStock: item.minSafetyStock, orderCoverDays: item.orderCoverDays, currentStock: item.currentStock, onOrder: desk.onOrder[item.id] ?? 0 },
-      result, series: buildSeries(item.id, desk.sales, desk.asOf), calendar: desk.calendar, asOf: desk.asOf, horizonDays,
-    });
-    try {
-      const ai = await forecaster.forecast(request);
-      rows.push({ runDate, itemId: item.id, provider: forecaster.id, aiUnitsPerDay: ai.unitsPerDay, blendUnitsPerDay: result.forecast, horizonDays, low: ai.low ?? null, high: ai.high ?? null });
-    } catch (e) {
-      failed++;
-      firstError ??= (e as Error).message;
-    }
+  const got = await collectAiForecasts({
+    forecaster, items: desk.items, results: desk.results, sales: desk.sales, calendar: desk.calendar, onOrder: desk.onOrder,
+    asOf: desk.asOf, runDate, deadline: Date.now() + RUN_BUDGET_MS,
   });
-  // Four at a time, so a slow AI service is not flooded.
-  for (let i = 0; i < work.length; i += 4) await Promise.all(work.slice(i, i + 4).map((w) => w()));
 
-  await store.saveAiForecasts(rows);
-  return { provider: forecaster.id, runDate: addDays(runDate, 0), saved: rows.length, failed, firstError };
+  let saved = got.rows.length;
+  let stopped = got.stopped;
+  try {
+    await store.saveAiForecasts(got.rows);
+  } catch (e) {
+    // For example the database is missing migration 0003. Not the owner's problem on this screen: log it and carry on.
+    console.error(`ai run: could not save the AI forecasts: ${(e as Error).message}`);
+    saved = 0;
+    stopped ??= "error";
+  }
+  if (got.firstError) console.error(`ai run: ${got.failed} item(s) without an answer. First reason: ${got.firstError}`);
+  return { provider: forecaster.id, runDate, saved, failed: got.failed, firstError: got.firstError, stopped };
 }
