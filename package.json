@@ -10,7 +10,8 @@
     "test": "vitest run",
     "acceptance": "node scripts/acceptance.mjs",
     "db:test": "node scripts/db-test.mjs",
-    "acceptance:live": "node scripts/acceptance-live.mjs"
+    "acceptance:live": "node scripts/acceptance-live.mjs",
+    "perf": "node scripts/perf.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.1",

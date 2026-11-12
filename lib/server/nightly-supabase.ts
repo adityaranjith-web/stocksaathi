@@ -23,7 +23,7 @@ export function supabaseNightlyDb(sb: SupabaseClient): NightlyDb {
     },
 
     async loadShop(shopId, salesSince): Promise<ShopData> {
-      const { data: items, error: e1 } = await sb.from("items").select("*").eq("shop_id", shopId).eq("is_active", true);
+      const { data: items, error: e1 } = await sb.from("items").select("id, distributor_id, name, category, pack, price, current_stock, lead_time_days, min_safety_stock, order_cover_days").eq("shop_id", shopId).eq("is_active", true);
       if (e1) throw new Error(`items: ${e1.message}`);
 
       const sales: ShopData["sales"] = [];

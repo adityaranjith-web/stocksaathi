@@ -19,6 +19,7 @@ export function setupMessage(raw: string): string {
   const m = raw.toLowerCase();
   if (/claim_invite|helper_invites|is_team|users\.email|prep_seconds|ai_forecasts/.test(m)) return "The database is out of date: run migration 0003 (see docs/live-setup.md). Detail: " + raw;
   if (/horizon_days/.test(m)) return "The database is out of date: run migration 0004 (see docs/live-setup.md). Detail: " + raw;
+  if (/shop_snapshot|daily_sales/.test(m)) return "The database is out of date: run migration 0006 (see docs/live-setup.md). Detail: " + raw;
   if (/create_shop|delete_my_account|consented_at|consent_version/.test(m)) return "The database is out of date: run migration 0005 (see docs/live-setup.md). Detail: " + raw;
   return raw;
 }

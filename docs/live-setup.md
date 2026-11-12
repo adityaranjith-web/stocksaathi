@@ -34,9 +34,9 @@ If sign-in fails the app now says so: the sign-in page shows "Sign-in did not fi
 
 ## 3. Database migrations
 
-Run the files in `supabase/migrations/` **in order** in the Supabase SQL editor: `0001`, `0002`, `0003`, `0004`, `0005`. `supabase/seed.sql` adds the demo shop and is optional.
+Run the files in `supabase/migrations/` **in order** in the Supabase SQL editor: `0001`, `0002`, `0003`, `0004`, `0005`, `0006`. `supabase/seed.sql` adds the demo shop and is optional.
 
-**Status of your project `stocksaathi`:** `0001` and `0002` were applied earlier. `0003`, `0004` and `0005` were applied on 12 Nov 2026 (with your permission) and `/api/health` then reported nothing missing. Your 30 items and 822 sales were not changed. What was missing before is in `docs/migration-audit.md`.
+**Status of your project `stocksaathi`:** `0001` and `0002` were applied earlier. `0003`, `0004`, `0005` and `0006` (the speed migration) were applied on 12 Nov 2026 (with your permission) and `/api/health` then reported nothing missing. Your 30 items and 822 sales were not changed. What was missing before is in `docs/migration-audit.md`.
 
 ## 4. Become the owner of "Sri Balaji Stores"
 

@@ -127,6 +127,8 @@
     "claim_invite": "0003",
     "i_am_team": "0003",
     "create_shop": "0005",
-    "delete_my_account": "0005"
+    "delete_my_account": "0005",
+    "daily_sales": "0006",
+    "shop_snapshot": "0006"
   }
 }

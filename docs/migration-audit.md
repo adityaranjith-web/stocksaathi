@@ -11,6 +11,7 @@ Checked on 12 Nov 2026 three ways: (1) the code's needs are written down in `lib
 | `0003_roles_setup_scorecard_ai.sql` | `users.email`, `users.is_team`; `orders.prep_seconds`; table `helper_invites`; `claim_invite()`; `i_am_team()`; helper-removal and calendar policies; table `ai_forecasts` |
 | `0004_nightly_job.sql` | `final_forecasts.horizon_days` |
 | `0005_onboarding_and_account_deletion.sql` | `users.consented_at`, `users.consent_version`; `create_shop()`; `delete_my_account()`; a foreign-key fix |
+| `0006_performance.sql` | Faster, same rules: policies call the helper functions once per query and no longer overlap; indexes on `shop_id`; read-only functions `daily_sales()` and `shop_snapshot()` (see `docs/performance.md`) |
 
 ## What your project was missing
 

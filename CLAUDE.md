@@ -17,6 +17,7 @@ npm install
 npm run dev      # demo mode at http://localhost:3000 when no Supabase keys are set
 npm test         # vitest (the 14 Forecast Desk tests plus tests for the scorecard, timer, set-up checks and AI plug-in)
 npm run build    # next build, also checks types and lint
+npm run perf     # page-speed table for live mode (see docs/performance.md; needs a test login)
 npm run db:test  # migrations + row-level security on a throw-away PostgreSQL (needs TEST_DATABASE_URL; see scripts/db-test.mjs)
 ```
 
@@ -27,6 +28,7 @@ npm run db:test  # migrations + row-level security on a throw-away PostgreSQL (n
 - `lib/data/`: `Store` interface with two versions: `demo.ts` (in memory, sample data) and `supabase.ts` (live, row-level security per shop).
 - `app/`: screens (`/sell`, `/reorder`, `/deliveries`, `/more`, `/stock`, `/scorecard`, `/item/[id]`, `/setup/*` for items, distributors, helpers and festival calendar, `/ai`, `/login`) and `app/api/*` routes.
 - `lib/auth.ts`: who is signed in (`getAccess()` gives ok, signed-out, no-shop or error; a broken database is never treated as signed-out). `/onboarding` is "Create your shop", `/setup/account` is sign-out and delete-account, `/api/health` is the live set-up self-check.
+- Speed (see `docs/performance.md`): in live mode a page costs ONE database call, `shop_snapshot()`; `lib/data/supabase.ts` shares one cached sign-in check and one snapshot per request. New reads should come from the snapshot or be asked for in the same `Promise.all`, never one after another. No `select("*")` (a test fails). A change to a policy must keep `(select my_shop())` wrapping and not overlap another policy for the same action (`npm run db:test`, D18). `lib/perf.ts` times every Supabase call when `PERF_LOG=1`.
 - `lib/data/db-contract.json`: what the code expects from the Supabase database and which migration adds it. Update it when the code uses a new table, column or function; `lib/db-contract.test.ts` and `npm run db:test` check it. `docs/live-setup.md` has the live-mode steps and every environment variable.
 - `lib/auth.ts` (continued): `requireOwner()` / `requireTeam()` for pages, `ownerOnly()` / `teamOnly()` for API routes. Every new owner-only page and route must use one.
 - `lib/scorecard.ts`, `lib/prep-time.ts`, `lib/validate.ts`: pure maths and checks, with tests next to them.

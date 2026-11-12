@@ -1,6 +1,6 @@
 // Gathers the data for the weekly scorecard and runs the calculations in lib/scorecard.ts.
 import { addDays } from "@/lib/forecast/desk";
-import { todayIST } from "@/lib/dates";
+import { asOfDay, todayIST } from "@/lib/dates";
 import { buildSeries, computeShopDesk } from "@/lib/desk-service";
 import { compareForecastError, evaluateSavedForecasts, outOfStockItemDays, SAVED_MIN, slowStockValue } from "@/lib/scorecard";
 import { averagePrepSeconds } from "@/lib/prep-time";
@@ -29,9 +29,15 @@ export interface Scorecard {
 }
 
 export async function buildScorecard(store: Store): Promise<Scorecard> {
-  const desk = await computeShopDesk(store);
-  const asOf = desk.asOf;
-  const [deliveries, orders] = await Promise.all([store.listDeliveries(addDays(asOf, -20)), store.listOrders(addDays(todayIST(), -6))]);
+  // Everything is asked for at the same time (they depend only on today's date, not on each other), so the scorecard
+  // waits for one round trip to the database, not three in a row.
+  const asOf = asOfDay();
+  const [desk, deliveries, orders, saved] = await Promise.all([
+    computeShopDesk(store),
+    store.listDeliveries(addDays(asOf, -20)),
+    store.listOrders(addDays(todayIST(), -6)),
+    store.listSavedForecasts(addDays(asOf, -60)),
+  ]);
   const stock = { items: desk.items.map((i) => ({ id: i.id, currentStock: i.currentStock })), sales: desk.sales, deliveries: deliveries.map((d) => ({ date: d.date, itemId: d.itemId, qty: d.qty })), asOf };
 
   const thisWeek = outOfStockItemDays(stock);
@@ -39,7 +45,6 @@ export async function buildScorecard(store: Store): Promise<Scorecard> {
 
   // Forecast accuracy comes from the rows the nightly job saved (top 20 items, last 4 weeks of nights).
   // Until there are enough of them, fall back to a back-test so the screen is never empty.
-  const saved = await store.listSavedForecasts(addDays(asOf, -60));
   const top = new Set(thisWeek.topItemIds);
   const ev = evaluateSavedForecasts(saved, desk.sales, asOf, { fromRunDate: addDays(asOf, -27), itemIds: top });
   let error: ForecastError;

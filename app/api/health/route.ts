@@ -53,6 +53,8 @@ export async function GET() {
     claim_invite: ["claim_invite", undefined],
     create_shop: ["create_shop", { p_name: "x", p_locality: "x", p_consent: false }],
     delete_my_account: ["delete_my_account", { p_confirm: "x" }],
+    shop_snapshot: ["shop_snapshot", { p_since: "2000-01-01" }],
+    daily_sales: ["daily_sales", { p_since: "2000-01-01" }],
   };
   for (const [name, [fn, args]] of Object.entries(calls)) {
     const r = await retry(() => sb.rpc(fn, args));

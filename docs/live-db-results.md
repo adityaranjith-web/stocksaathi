@@ -2,9 +2,9 @@
 
 | ID | Live-mode database check | Result | Evidence |
 |---|---|---|---|
-| D1 | Migrations 0001 to 0005 and the seed apply cleanly, in order, on an empty database | **PASS** | 0001_schema.sql, 0002_lock_down_helper_functions.sql, 0003_roles_setup_scorecard_ai.sql, 0004_nightly_job.sql, 0005_onboarding_and_account_deletion.sql applied; seed loaded 1 shop and 1633 sales. |
-| D2 | Every table, column and function the app code uses exists | **PASS** | 14 tables with 90 columns and 7 functions all present. |
-| D3 | The code only uses tables and database functions this check knows about | **PASS** | Code uses 13 tables and 3 database functions (claim_invite, create_shop, delete_my_account), all covered. |
+| D1 | Every migration file and the seed apply cleanly, in order, on an empty database | **PASS** | 0001_schema.sql, 0002_lock_down_helper_functions.sql, 0003_roles_setup_scorecard_ai.sql, 0004_nightly_job.sql, 0005_onboarding_and_account_deletion.sql, 0006_performance.sql applied; seed loaded 1 shop and 1633 sales. |
+| D2 | Every table, column and function the app code uses exists | **PASS** | 14 tables with 90 columns and 9 functions all present. |
+| D3 | The code only uses tables and database functions this check knows about | **PASS** | Code uses 13 tables and 5 database functions (shop_snapshot, claim_invite, create_shop, delete_my_account, daily_sales), all covered. |
 | D4 | Every upsert in the app names columns that are a primary key or unique index | **PASS** | 5 upsert targets checked. |
 | D5 | claim_demo_shop.sql makes a signed-in user the owner of "Sri Balaji Stores"; it is safe to run twice | **PASS** | Alice is now the owner of "Sri Balaji Stores" (ran twice, one users row). |
 | D6 | The owner sees her own shop's items and sales through row-level security | **PASS** | Alice sees 30 items, 1633 sales and 1 shop. |
@@ -19,5 +19,9 @@
 | D15 | Nightly job: the service key can write every shop's forecasts; signed-in users can only read their own | **PASS** | The service role wrote 5 model forecasts, 5 scores and 1 final forecast per item for 2 nights in 2 shops (upserts, so a re-run replaces them). Each owner sees only her own; users cannot write these tables. |
 | D16 | Delete my account: owner only, must type the shop name, removes the whole shop, helpers and sign-ins, and nothing of any other shop | **PASS** | Bala's shop, items, distributors, sales (including the helper's), orders, order lines, deliveries, helper invites, forecasts, AI forecasts, the helper's login and Bala's login are all gone; Alice's shop is exactly as before (30 items, 1634 sales, 1 users) and the shared calendar is untouched. A helper, a wrong name, an empty name and another shop's name were all refused. |
 | D17 | The owner of the demo shop can delete it too, leaving other data alone | **PASS** | The demo shop with its 30 items and all its sales was deleted in one call (no foreign-key blocks), together with the owner's login. |
+| D18 | Policies: a read is checked by one policy only, and the helper functions run once per query, not once per row (0006) | **PASS** | 37 policies on 14 tables: no table has two policies for the same action; all 71 helper-function calls are wrapped in (select ...). |
+| D19 | daily_sales returns the same totals as the raw sales, in one value, for the caller's shop only (0006) | **PASS** | 2053 daily totals (10656 units) equal the raw sales exactly; returned as one value (no 1,000-row cut); a second shop gets nothing; anonymous refused. |
+| D20 | shop_snapshot returns exactly what the separate queries returned (items, distributors, calendar, on order, open orders, me, shop) (0006) | **PASS** | Identical to the old separate queries: 30 items, 4 distributors, 5 calendar days, 2 items on order, 1 open order(s) with only the undelivered lines, the caller and the shop. A person with no shop gets empty answers; anonymous is refused. |
+| D21 | The policy rewrite: 200,000 rows read with the old policy call my_shop() 200,000 times, with the new one once (0006) | **PASS** | Same 1,00,000 rows visible. Old policy: 2,00,001 calls to my_shop(), 1453 ms. New policy: 1 call, 15 ms. |
 
-17 passed, 0 failed.
+21 passed, 0 failed.

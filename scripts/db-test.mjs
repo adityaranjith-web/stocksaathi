@@ -82,12 +82,12 @@ async function setup() {
 
 async function main() {
   console.log("Live-mode database tests (real PostgreSQL)\n");
-  await test("D1", "Migrations 0001 to 0005 and the seed apply cleanly, in order, on an empty database", async () => {
+  await test("D1", "Every migration file and the seed apply cleanly, in order, on an empty database", async () => {
     await setup();
     const files = fs.readdirSync(path.join(root, "supabase/migrations")).filter((n) => n.endsWith(".sql")).sort();
     const [{ n }] = await q("select count(*)::int n from sales");
     const [{ s }] = await q("select count(*)::int s from shops");
-    assert(files.length === 5, `expected 5 migration files, found ${files.length}`);
+    assert(files.length >= 6 && files.every((f, i) => f.startsWith(String(i + 1).padStart(4, "0"))), `migration files are not numbered 0001, 0002, ... without gaps: ${files.join(", ")}`);
     return `${files.join(", ")} applied; seed loaded ${s} shop and ${n} sales.`;
   });
   if (results[0].status === "FAIL") { if (c) await c.end().catch(() => {}); report(); return; } // nothing else can run without the schema
@@ -325,6 +325,116 @@ async function main() {
     return "The service role wrote 5 model forecasts, 5 scores and 1 final forecast per item for 2 nights in 2 shops (upserts, so a re-run replaces them). Each owner sees only her own; users cannot write these tables.";
   });
 
+
+  await test("D18", "Policies: a read is checked by one policy only, and the helper functions run once per query, not once per row (0006)", async () => {
+    const pol = await q("select tablename, policyname, cmd, coalesce(qual,'') qual, coalesce(with_check,'') wc from pg_policies where schemaname='public'");
+    const by = {};
+    for (const p of pol) for (const cmd of p.cmd === "ALL" ? ["SELECT", "INSERT", "UPDATE", "DELETE"] : [p.cmd]) (by[p.tablename + " " + cmd] ??= []).push(p.policyname);
+    const overlaps = Object.entries(by).filter(([, v]) => v.length > 1).map(([k, v]) => k + ": " + v.join(" + "));
+    assert(!overlaps.length, "policies overlap: " + overlaps.join("; "));
+    let calls = 0, wrapped = 0;
+    for (const p of pol) {
+      const t = p.qual + " " + p.wc;
+      calls += (t.match(/\b(my_shop|i_am_owner|i_am_team)\(\)/g) ?? []).length;
+      wrapped += (t.match(/SELECT (public\.)?(my_shop|i_am_owner|i_am_team)\(\)/gi) ?? []).length;
+    }
+    assert(calls > 20 && calls === wrapped, calls + " helper-function calls in policies, only " + wrapped + " wrapped in (select ...)");
+    return pol.length + " policies on " + new Set(pol.map((p) => p.tablename)).size + " tables: no table has two policies for the same action; all " + calls + " helper-function calls are wrapped in (select ...).";
+  });
+
+  await test("D19", "daily_sales returns the same totals as the raw sales, in one value, for the caller's shop only (0006)", async () => {
+    await as.admin();
+    // enough extra history that the daily totals pass 1,000 entries (the API's row limit does not apply to one json value)
+    await c.query("insert into sales (shop_id, item_id, sale_date, quantity, entry_method) select $1, i.id, current_date - g, 1 + (g % 5), 'CSV upload' from items i, generate_series(60, 100) g where i.shop_id = $1", [demoShop]);
+    await as.user(people.alice);
+    const since = (await q("select (current_date - 120)::text d"))[0].d;
+    const [{ j }] = await q("select daily_sales($1::date) j", [since]);
+    const raw = await q("select item_id, sale_date::text d, sum(quantity)::int q from sales where sale_date >= $1::date group by item_id, sale_date", [since]);
+    const key = (a) => a.item + "|" + a.d + "|" + a.q;
+    const a = j.map(([item, d, qty]) => key({ item, d, q: qty })).sort();
+    const b = raw.map((r) => key({ item: r.item_id, d: r.d, q: r.q })).sort();
+    assert(a.length === b.length && a.every((x, i) => x === b[i]), "totals differ: " + a.length + " vs " + b.length);
+    assert(a.length > 1000, "expected more than 1,000 daily totals to prove there is no row limit, got " + a.length);
+    const sumJ = j.reduce((t, r) => t + r[2], 0), sumRaw = (await q("select sum(quantity)::int s from sales where sale_date >= $1::date", [since]))[0].s;
+    assert(sumJ === sumRaw, "units differ: " + sumJ + " vs " + sumRaw);
+    await as.user(people.bala);
+    // bala's shop was created earlier in D7; she sees none of alice's sales
+    const [{ j: jb }] = await q("select daily_sales($1::date) j", [since]);
+    assert(jb.length === 0, "a second shop got " + jb.length + " daily totals of the first shop");
+    await as.anon();
+    await refused("select daily_sales(current_date - 30)", [], /permission denied/);
+    await as.admin(); await c.query("delete from sales where shop_id=$1 and entry_method='CSV upload' and sale_date < current_date - 59", [demoShop]);
+    return a.length + " daily totals (" + sumJ + " units) equal the raw sales exactly; returned as one value (no 1,000-row cut); a second shop gets nothing; anonymous refused.";
+  });
+
+  await test("D20", "shop_snapshot returns exactly what the separate queries returned (items, distributors, calendar, on order, open orders, me, shop) (0006)", async () => {
+    await as.user(people.alice);
+    const dist = (await q("select id from distributors order by name limit 1"))[0].id;
+    const items = (await q("select id from items order by name limit 3")).map((r) => r.id);
+    const [o] = await q("insert into orders (shop_id, distributor_id) values ($1,$2) returning id", [demoShop, dist]);
+    await q("insert into order_lines (order_id, item_id, quantity) values ($1,$2,10), ($1,$3,20), ($1,$4,30)", [o.id, items[0], items[1], items[2]]);
+    await q("insert into deliveries (shop_id, item_id, quantity) values ($1,$2,20)", [demoShop, items[1]]); // closes one line only? (the trigger closes every open line of that item)
+    const since = (await q("select (current_date - 55)::text d"))[0].d;
+    const [{ s }] = await q("select shop_snapshot($1::date) s", [since]);
+    // the old per-screen queries
+    const oldItems = await q("select id, distributor_id, name, category, pack, price, current_stock, lead_time_days, min_safety_stock, order_cover_days from items where is_active order by name");
+    const oldDist = await q("select id, name, supplies, salesman, whatsapp, visit_day from distributors order by name");
+    const oldCal = await q("select day::text as day, name, uplift_pct from conditions_calendar order by day");
+    const oldOn = {}; for (const r of await q("select item_id, quantity from order_lines where delivered = false")) oldOn[r.item_id] = (oldOn[r.item_id] ?? 0) + r.quantity;
+    const oldOpen = (await q("select o.id, o.distributor_id, o.order_date::text as order_date, l.item_id, l.quantity from orders o join order_lines l on l.order_id=o.id where o.status='Sent' and not l.delivered order by o.order_date, o.id, l.item_id"));
+    const oldMe = (await q("select id, shop_id, role, name, is_team from users where id = $1", [people.alice.id]))[0];
+    const oldShop = (await q("select id, name, locality from shops"))[0];
+    const eq = (a, b, what) => assert(JSON.stringify(a) === JSON.stringify(b), what + " differ:\n" + JSON.stringify(a).slice(0, 200) + "\n" + JSON.stringify(b).slice(0, 200));
+    eq(s.items.map((i) => [i.id, i.distributor_id, i.name, i.category, i.pack, Number(i.price), i.current_stock, i.lead_time_days, i.min_safety_stock, i.order_cover_days]),
+       oldItems.map((i) => [i.id, i.distributor_id, i.name, i.category, i.pack, Number(i.price), i.current_stock, i.lead_time_days, i.min_safety_stock, i.order_cover_days]), "items");
+    eq(s.distributors.map((d) => [d.id, d.name, d.supplies, d.salesman, d.whatsapp, d.visit_day]), oldDist.map((d) => [d.id, d.name, d.supplies, d.salesman, d.whatsapp, d.visit_day]), "distributors");
+    eq(s.calendar.map((c) => [c.day, c.name, c.uplift_pct]), oldCal.map((c) => [c.day, c.name, c.uplift_pct]), "calendar");
+    eq(Object.entries(s.on_order).sort(), Object.entries(oldOn).sort(), "units on order"); // key order does not matter
+    const flat = s.open_orders.flatMap((x) => x.lines.map((l) => [x.id, x.distributor_id, x.order_date, l.item_id, l.quantity]));
+    eq(flat, oldOpen.map((r) => [r.id, r.distributor_id, r.order_date, r.item_id, r.quantity]), "open orders");
+    const sorted = (o) => Object.entries(o).sort();
+    eq(sorted(s.me), sorted(oldMe), "me"); eq(sorted(s.shop), sorted(oldShop), "shop");
+    assert(s.items.length === 30 && Object.keys(s.on_order).length >= 1, "unexpected sizes: " + s.items.length + " items, " + Object.keys(s.on_order).length + " on order");
+    // a person with no shop gets empty answers, not an error and not anyone else's data
+    await as.user(people.dev);
+    const [{ s: e }] = await q("select shop_snapshot($1::date) s", [since]);
+    assert(e.me === null && e.shop === null && e.items.length === 0 && e.distributors.length === 0 && e.sales.length === 0 && e.open_orders.length === 0 && Object.keys(e.on_order).length === 0, "a person with no shop got data: " + JSON.stringify(e).slice(0, 160));
+    await as.anon();
+    await refused("select shop_snapshot(current_date - 30)", [], /permission denied/);
+    return "Identical to the old separate queries: " + s.items.length + " items, " + s.distributors.length + " distributors, " + s.calendar.length + " calendar days, " + Object.keys(s.on_order).length + " items on order, " + s.open_orders.length + " open order(s) with only the undelivered lines, the caller and the shop. A person with no shop gets empty answers; anonymous is refused.";
+  });
+
+  await test("D21", "The policy rewrite: 200,000 rows read with the old policy call my_shop() 200,000 times, with the new one once (0006)", async () => {
+    await as.admin();
+    await c.query("set track_functions = 'all'");
+    await c.query("drop table if exists perf_old, perf_new");
+    for (const t of ["perf_old", "perf_new"]) {
+      await c.query("create table " + t + " (id serial primary key, shop_id uuid not null, v int)");
+      await c.query("insert into " + t + " (shop_id, v) select case when g % 2 = 0 then $1::uuid else $2::uuid end, g from generate_series(1, 200000) g", [demoShop, people.dev.id]);
+      await c.query("alter table " + t + " enable row level security");
+      await c.query("grant select on " + t + " to authenticated");
+    }
+    await c.query("create policy p on perf_old for select using (shop_id = my_shop())");            // the old way
+    await c.query("create policy p on perf_new for select using (shop_id = (select my_shop()))");   // the new way
+    const run = async (t) => {
+      await c.query("begin");
+      await c.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: people.alice.id, email: people.alice.email, role: "authenticated" })]);
+      await c.query("set local role authenticated");
+      const t0 = performance.now();
+      const [{ n }] = await q("select count(*)::int n from " + t);
+      const ms = Math.round(performance.now() - t0);
+      await c.query("reset role");
+      const calls = (await q("select coalesce(sum(calls),0)::int c from pg_stat_xact_user_functions where funcname = 'my_shop'"))[0].c;
+      await c.query("commit");
+      return { n, ms, calls };
+    };
+    const oldR = await run("perf_old"), newR = await run("perf_new");
+    await c.query("drop table perf_old, perf_new");
+    assert(oldR.n === newR.n && oldR.n === 100000, "the two policies returned different rows: " + oldR.n + " vs " + newR.n);
+    assert(oldR.calls >= 100000 && newR.calls <= 2, "function calls: old " + oldR.calls + ", new " + newR.calls);
+    return "Same " + oldR.n.toLocaleString("en-IN") + " rows visible. Old policy: " + oldR.calls.toLocaleString("en-IN") + " calls to my_shop(), " + oldR.ms + " ms. New policy: " + newR.calls + " call, " + newR.ms + " ms.";
+  });
+
   await test("D16", "Delete my account: owner only, must type the shop name, removes the whole shop, helpers and sign-ins, and nothing of any other shop", async () => {
     // give Bala's shop everything: a helper (claimed), an unclaimed invite, orders, deliveries, sales, AI forecasts
     await as.user(people.bala);
@@ -398,6 +508,7 @@ async function main() {
 }
 
 function report() {
+  results.sort((a, b) => parseInt(a.id.slice(1), 10) - parseInt(b.id.slice(1), 10)); // D1, D2, ... D21
   const lines = ["| ID | Live-mode database check | Result | Evidence |", "|---|---|---|---|"];
   for (const r of results) lines.push(`| ${r.id} | ${r.title} | **${r.status}** | ${r.evidence.replace(/\|/g, "/").replace(/\n/g, " ")} |`);
   const fails = results.filter((r) => r.status === "FAIL").length;
