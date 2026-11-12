@@ -1,3 +1,4 @@
+import { realBusinessDay } from "@/lib/test-helpers";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
@@ -141,6 +142,7 @@ describe("every forecast and reorder quantity is identical to before", () => {
   // "Before" = the Forecast Desk fed the raw sales rows (one row per tap). "After" = the Desk fed the daily totals
   // that the snapshot returns. They must match exactly: forecasts, weights, spreads, confidence and orders.
   const rawStore = {
+    getBusinessDay: realBusinessDay,
     listItems: async () => ITEM_ROWS.map((r) => ({ id: r.id, name: r.name, category: r.category, pack: r.pack, price: r.price, distributorId: r.distributor_id, leadTimeDays: r.lead_time_days, minSafetyStock: r.min_safety_stock, orderCoverDays: r.order_cover_days, currentStock: r.current_stock })).sort((a, b) => a.name.localeCompare(b.name)),
     listDistributors: async () => [],
     listSales: async (since: string) => rawSales.filter((s) => s.date >= since),

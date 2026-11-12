@@ -1,6 +1,6 @@
 // Builds each item's daily sales series and runs the Forecast Desk for the whole shop.
 import { addDays, runDesk, type DeskResult, type SalesSeries } from "@/lib/forecast/desk";
-import { asOfDay } from "@/lib/dates";
+import { asOfFor } from "@/lib/business-day";
 import type { Distributor, Item, Sale, Store } from "@/lib/data/types";
 import { getAiMode, getForecaster } from "@/lib/forecast/ai/registry";
 import { evaluateShadow, shouldPromote } from "@/lib/forecast/ai/evaluate";
@@ -41,6 +41,10 @@ export interface ShopDesk {
   distributors: Distributor[];
   results: Map<string, DeskResult>;
   onOrder: Record<string, number>;
+  /** The shop's "today" (see lib/business-day.ts) and the real date. The Desk works up to the day before the business date. */
+  businessDate: string;
+  realDate: string;
+  simulated: boolean;
   todaySales: { units: number; value: number };
   sales: Sale[]; // the last 56 days of sales, kept so other screens do not have to fetch them again
   calendar: { date: string; name: string; upliftPct: number }[];
@@ -51,7 +55,9 @@ export interface ShopDesk {
  * a provider is set up, and the AI has passed the checks in shouldPromote (see docs/ai-integration.md).
  */
 export async function computeShopDesk(store: Store, opts: { useAi?: boolean } = {}): Promise<ShopDesk> {
-  const asOf = asOfDay();
+  // The shop's own "today". In live mode this reads the same snapshot as everything below, so it costs no extra call.
+  const day = await store.getBusinessDay();
+  const asOf = asOfFor(day.date);
   const [items, distributors, sales, calendar, onOrder] = await Promise.all([
     store.listItems(), store.listDistributors(), store.listSales(addDays(asOf, -(LOOKBACK_DAYS - 1))), store.listCalendar(), store.openOrderQty(),
   ]);
@@ -75,9 +81,9 @@ export async function computeShopDesk(store: Store, opts: { useAi?: boolean } = 
   }
 
   const price = new Map(items.map((i) => [i.id, i.price]));
-  const todays = sales.filter((s) => s.date > asOf);
+  const todays = sales.filter((s) => s.date > asOf && s.date <= day.date); // only the business date itself: not days closed ahead
   return {
-    asOf, items, distributors, results, onOrder, sales, calendar,
+    asOf, items, distributors, results, onOrder, sales, calendar, businessDate: day.date, realDate: day.realDate, simulated: day.simulated,
     todaySales: { units: todays.reduce((a, s) => a + s.qty, 0), value: todays.reduce((a, s) => a + s.qty * (price.get(s.itemId) ?? 0), 0) },
   };
 }

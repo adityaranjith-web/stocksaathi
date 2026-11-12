@@ -31,13 +31,16 @@ export interface Scorecard {
 export async function buildScorecard(store: Store): Promise<Scorecard> {
   // Everything is asked for at the same time (they depend only on today's date, not on each other), so the scorecard
   // waits for one round trip to the database, not three in a row.
-  const asOf = asOfDay();
+  // The shop's own "today" can be ahead of the real date, never behind it. So the windows below are measured from the real
+  // date (they only ever ask for a little more), and the calculations use the shop's date (desk.asOf).
+  const realAsOf = asOfDay();
   const [desk, deliveries, orders, saved] = await Promise.all([
     computeShopDesk(store),
-    store.listDeliveries(addDays(asOf, -20)),
+    store.listDeliveries(addDays(realAsOf, -20)),
     store.listOrders(addDays(todayIST(), -6)),
-    store.listSavedForecasts(addDays(asOf, -60)),
+    store.listSavedForecasts(addDays(realAsOf, -60)),
   ]);
+  const asOf = desk.asOf;
   const stock = { items: desk.items.map((i) => ({ id: i.id, currentStock: i.currentStock })), sales: desk.sales, deliveries: deliveries.map((d) => ({ date: d.date, itemId: d.itemId, qty: d.qty })), asOf };
 
   const thisWeek = outOfStockItemDays(stock);

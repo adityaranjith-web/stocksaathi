@@ -2,6 +2,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { NightlyDb, NightlyRows, ShopData } from "@/lib/nightly";
 import { rowToItem } from "@/lib/data/rows";
+import { todayIST } from "@/lib/dates";
+import { effectiveBusinessDate } from "@/lib/business-day";
 
 if (typeof window !== "undefined") throw new Error("The nightly job runs on the server only.");
 
@@ -23,6 +25,9 @@ export function supabaseNightlyDb(sb: SupabaseClient): NightlyDb {
     },
 
     async loadShop(shopId, salesSince): Promise<ShopData> {
+      // The shop's own "today" and whether it is the demo shop (migration 0008).
+      const { data: shop, error: e0 } = await sb.from("shops").select("business_date, is_sample_shop").eq("id", shopId).single();
+      if (e0) throw new Error(`shops: ${e0.message}`);
       const { data: items, error: e1 } = await sb.from("items").select("id, distributor_id, name, category, pack, price, current_stock, lead_time_days, min_safety_stock, order_cover_days").eq("shop_id", shopId).eq("is_active", true);
       if (e1) throw new Error(`items: ${e1.message}`);
 
@@ -49,6 +54,8 @@ export function supabaseNightlyDb(sb: SupabaseClient): NightlyDb {
         sales,
         calendar: (cal ?? []).map((c) => ({ date: c.day as string, name: c.name as string, upliftPct: c.uplift_pct as number })),
         onOrder,
+        businessDate: effectiveBusinessDate(shop?.business_date as string | null, todayIST()),
+        sampleShop: Boolean(shop?.is_sample_shop),
       };
     },
 
@@ -57,6 +64,19 @@ export function supabaseNightlyDb(sb: SupabaseClient): NightlyDb {
       await upsert("model_forecasts", rows.modelForecasts, "item_id,run_date,model");
       await upsert("model_scores", rows.modelScores, "item_id,run_date,model");
       await upsert("final_forecasts", rows.finalForecasts, "item_id,run_date");
+    },
+
+    async saveSampleSales(shopId, rows) {
+      // Labelled sample sales for the demo shop only (the caller checks is_sample_shop). The database's stock rule
+      // lowers stock for them like any sale. Never any other shop: the shop id comes from the job, not from a person.
+      const { data: shop, error: e0 } = await sb.from("shops").select("is_sample_shop").eq("id", shopId).single();
+      if (e0) throw new Error(`shops: ${e0.message}`);
+      if (!shop?.is_sample_shop) throw new Error("Sample sales are only for the demo shop.");
+      const all = rows.map((r) => ({ shop_id: shopId, item_id: r.itemId, sale_date: r.date, quantity: r.qty, entry_method: "Quick tap", is_sample: true }));
+      for (let i = 0; i < all.length; i += CHUNK) {
+        const { error } = await sb.from("sales").insert(all.slice(i, i + CHUNK));
+        if (error) throw new Error(`sales: ${error.message}`);
+      }
     },
 
     async saveAiRows(shopId, rows) {

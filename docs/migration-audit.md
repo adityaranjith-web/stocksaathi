@@ -12,6 +12,7 @@ Checked on 12 Nov 2026 three ways: (1) the code's needs are written down in `lib
 | `0004_nightly_job.sql` | `final_forecasts.horizon_days` |
 | `0005_onboarding_and_account_deletion.sql` | `users.consented_at`, `users.consent_version`; `create_shop()`; `delete_my_account()`; a foreign-key fix |
 | `0006_performance.sql` | Faster, same rules: policies call the helper functions once per query and no longer overlap; indexes on `shop_id`; read-only functions `daily_sales()` and `shop_snapshot()` (see `docs/performance.md`) |
+| `0008_business_date.sql` | `shops.business_date` and `shops.is_sample_shop`; `sales.is_sample`; functions `close_day()` and `reset_business_date()` (owner on the product team only); `shop_snapshot()` also returns the business date (see `docs/live-setup.md`, section 10) |
 | `0007_demo_accounts.sql` | `users.is_demo` (false for everyone; set only by `supabase/link_demo_accounts.sql`); `delete_my_account()` refuses a demo account; the "remove helper" rule skips a demo helper. The app's code does not read `is_demo`, so `/api/health` does not list it (see `docs/live-setup.md`, section 8) |
 
 ## What your project was missing

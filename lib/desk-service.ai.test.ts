@@ -1,3 +1,4 @@
+import { realBusinessDay } from "@/lib/test-helpers";
 import { afterEach, describe, expect, it } from "vitest";
 import { addDays } from "@/lib/forecast/desk";
 import { asOfDay } from "@/lib/dates";
@@ -13,6 +14,7 @@ const sales = items.flatMap((it) => Array.from({ length: 56 }, (_, k) => ({ date
 
 function store(aiRows: AiForecastRow[]): Store {
   return {
+    getBusinessDay: realBusinessDay,
     listItems: async () => items, listDistributors: async () => [], listSales: async () => sales, listCalendar: async () => [], openOrderQty: async () => ({}),
     listAiForecasts: async () => aiRows,
   } as unknown as Store;

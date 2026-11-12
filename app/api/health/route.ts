@@ -55,6 +55,8 @@ export async function GET() {
     delete_my_account: ["delete_my_account", { p_confirm: "x" }],
     shop_snapshot: ["shop_snapshot", { p_since: "2000-01-01" }],
     daily_sales: ["daily_sales", { p_since: "2000-01-01" }],
+    close_day: ["close_day", { p_day: "2000-01-01" }],
+    reset_business_date: ["reset_business_date", undefined],
   };
   for (const [name, [fn, args]] of Object.entries(calls)) {
     const r = await retry(() => sb.rpc(fn, args));

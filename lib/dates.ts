@@ -14,3 +14,7 @@ export function daysBetween(a: string, b: string): number {
 export function niceDate(d: string): string {
   return new Date(d + "T00:00:00Z").toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" });
 }
+/** A day with its weekday, for example "Fri, 13 Nov". */
+export function niceDay(d: string): string {
+  return new Date(d + "T00:00:00Z").toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+}

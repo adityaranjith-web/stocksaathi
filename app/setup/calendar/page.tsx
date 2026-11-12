@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { getStore } from "@/lib/data";
 import { requireTeam } from "@/lib/auth";
-import { todayIST } from "@/lib/dates";
 import CalendarManager from "@/components/CalendarManager";
 import DotIcon from "@/components/ui/DotIcon";
 
@@ -10,7 +9,8 @@ export const dynamic = "force-dynamic";
 // FR8: product team only.
 export default async function CalendarPage() {
   await requireTeam();
-  const days = await getStore().listCalendar();
+  const store = getStore();
+  const [days, day] = await Promise.all([store.listCalendar(), store.getBusinessDay()]); // the shop's own "today"
   return (
     <div className="space-y-4">
       <div className="rise px-1">
@@ -18,7 +18,7 @@ export default async function CalendarPage() {
         <h1 className="text-2xl font-bold">Festival calendar</h1>
         <p className="text-sm text-ink-2">Mark festival and holiday dates. A marked date changes that week&apos;s forecast for every shop.</p>
       </div>
-      <CalendarManager days={days} today={todayIST()} />
+      <CalendarManager days={days} today={day.date} />
     </div>
   );
 }

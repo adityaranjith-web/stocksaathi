@@ -9,11 +9,12 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { cache } from "react";
 import { asOfDay, todayIST } from "@/lib/dates";
+import { effectiveBusinessDate } from "@/lib/business-day";
 import { addDays, type CalendarDay } from "@/lib/forecast/desk";
 import { timedFetch } from "@/lib/perf";
 import { rowToItem } from "./rows";
 import { AccessError, SetupError, setupMessage } from "./errors";
-import type { AiForecastRow, Distributor, DistributorInput, Helper, ImportResult, ImportRow, Item, ItemInput, Me, OpenOrder, OrderRecord, SavedForecast, Sale, Store } from "./types";
+import type { AiForecastRow, BusinessDay, CloseDayResult, Distributor, DistributorInput, Helper, ImportResult, ImportRow, Item, ItemInput, Me, OpenOrder, OrderRecord, SavedForecast, Sale, Store } from "./types";
 
 export async function supabaseServer() {
   const cookieStore = await cookies();
@@ -33,12 +34,17 @@ export const SNAPSHOT_DAYS = 56;
 const snapshotSince = () => addDays(asOfDay(), -(SNAPSHOT_DAYS - 1));
 
 const USER_COLUMNS = "id, shop_id, role, name, is_team";
+// The same call also brings the shop's business date (a sale, delivery or order is dated with the shop's own "today").
+const USER_WITH_SHOP = `${USER_COLUMNS}, shops(business_date)`;
 type UserRow = { id: string; shop_id: string; role: "owner" | "helper"; name: string; is_team: boolean | null };
+type UserWithShop = UserRow & { shops?: { business_date: string | null } | { business_date: string | null }[] | null };
 
 /** What shop_snapshot() returns (see supabase/migrations/0006_performance.sql). */
 export interface Snapshot {
   me: UserRow | null;
   shop: { id: string; name: string; locality: string | null } | null;
+  /** The shop's business date (migration 0008). Missing in an older snapshot: then the real date counts. */
+  business?: { business_date: string; real_date: string; is_sample_shop: boolean; sales_today: number } | null;
   items: { id: string; distributor_id: string; name: string; category: string | null; pack: string | null; price: number | string; current_stock: number; lead_time_days: number; min_safety_stock: number; order_cover_days: number }[];
   distributors: { id: string; name: string; supplies: string | null; salesman: string | null; whatsapp: string | null; visit_day: string | null }[];
   sales: [string, string, number][]; // [item_id, date, quantity]: one entry per item per day
@@ -111,7 +117,7 @@ const lightMe = cache(async () => {
   const sb = await client();
   const user = await authUser();
   if (!user) throw new AccessError("signed-out");
-  const find = () => sb.from("users").select(USER_COLUMNS).eq("id", user.id).maybeSingle();
+  const find = () => sb.from("users").select(USER_WITH_SHOP).eq("id", user.id).maybeSingle();
   let { data: row, error } = await find();
   if (error) throw isBadToken(error) ? new AccessError("signed-out") : new SetupError(setupMessage(error.message));
   if (!row) {
@@ -123,7 +129,9 @@ const lightMe = cache(async () => {
     }
   }
   if (!row) throw new AccessError("no-shop");
-  return { sb, user: row as UserRow };
+  const r = row as unknown as UserWithShop;
+  const shop = Array.isArray(r.shops) ? r.shops[0] : r.shops;
+  return { sb, user: r as UserRow, businessDate: effectiveBusinessDate(shop?.business_date, todayIST()) };
 });
 
 /** Turns a database error into a sentence the owner can read. */
@@ -138,6 +146,28 @@ export const supabaseStore: Store = {
   async getMe(): Promise<Me> {
     const { me } = await snap();
     return { name: me!.name, role: me!.role, isTeam: Boolean(me!.is_team) };
+  },
+  async getBusinessDay(): Promise<BusinessDay> {
+    const { business } = await snap();
+    const real = todayIST();
+    if (!business) return { date: real, realDate: real, simulated: false, sampleShop: false, salesToday: 0 };
+    return {
+      date: business.business_date, realDate: business.real_date, simulated: business.business_date > business.real_date,
+      sampleShop: Boolean(business.is_sample_shop), salesToday: Number(business.sales_today) || 0,
+    };
+  },
+  async closeDay(day, sample): Promise<CloseDayResult> {
+    const { sb } = await lightMe();
+    const { data, error } = await sb.rpc("close_day", { p_day: day, p_sample: sample.length ? sample.map((r) => ({ item_id: r.itemId, quantity: r.qty })) : null });
+    if (error) throw new Error(/close_day/.test(error.message) && /not exist|schema cache|find the function/i.test(error.message) ? setupMessage(error.message) : error.message);
+    const r = data as { closed: string; business_date: string; sample_rows: number };
+    return { closed: r.closed, businessDate: r.business_date, sampleRows: r.sample_rows };
+  },
+  async resetBusinessDate() {
+    const { sb } = await lightMe();
+    const { data, error } = await sb.rpc("reset_business_date");
+    if (error) throw new Error(/reset_business_date/.test(error.message) && /not exist|schema cache|find the function/i.test(error.message) ? setupMessage(error.message) : error.message);
+    return { removedSampleSales: (data as { removed_sample_sales: number }).removed_sample_sales };
   },
   async createShop(name, locality, consent) {
     const sb = await client();
@@ -205,13 +235,13 @@ export const supabaseStore: Store = {
 
   // ----- writes -----
   async addSale(itemId, qty, method) {
-    const { sb, user } = await lightMe();
-    const { error } = await sb.from("sales").insert({ shop_id: user.shop_id, item_id: itemId, sale_date: todayIST(), quantity: qty, entry_method: method, logged_by: user.id });
+    const { sb, user, businessDate } = await lightMe();
+    const { error } = await sb.from("sales").insert({ shop_id: user.shop_id, item_id: itemId, sale_date: businessDate, quantity: qty, entry_method: method, logged_by: user.id });
     if (error) throw new Error(error.message);
   },
   async addDelivery(itemId, qty) {
-    const { sb, user } = await lightMe();
-    const { error } = await sb.from("deliveries").insert({ shop_id: user.shop_id, item_id: itemId, quantity: qty });
+    const { sb, user, businessDate } = await lightMe();
+    const { error } = await sb.from("deliveries").insert({ shop_id: user.shop_id, item_id: itemId, quantity: qty, received_on: businessDate });
     if (error) throw friendly(error, error.message);
   },
   async importSales(rows: ImportRow[]): Promise<ImportResult> {
@@ -232,8 +262,8 @@ export const supabaseStore: Store = {
     return { saved: good.length, errors };
   },
   async createOrder(distributorId, lines, prepSeconds = null) {
-    const { sb, user } = await lightMe();
-    const { data, error } = await sb.from("orders").insert({ shop_id: user.shop_id, distributor_id: distributorId, whatsapp_payload: { lines }, prep_seconds: prepSeconds }).select("id").single();
+    const { sb, user, businessDate } = await lightMe();
+    const { data, error } = await sb.from("orders").insert({ shop_id: user.shop_id, distributor_id: distributorId, order_date: businessDate, whatsapp_payload: { lines }, prep_seconds: prepSeconds }).select("id").single();
     if (error || !data) throw new Error(error?.message ?? "Order not saved");
     const { error: e2 } = await sb.from("order_lines").insert(lines.filter((l) => l.qty > 0).map((l) => ({ order_id: data.id, item_id: l.itemId, quantity: l.qty })));
     if (e2) throw new Error(e2.message);

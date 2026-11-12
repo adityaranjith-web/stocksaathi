@@ -1,7 +1,6 @@
 // Runs the AI provider over every item and keeps the answers next to the Forecast Desk's own forecast.
 // Nothing here changes an order. An AI problem (free limit used up, service down, bad answer) is not an error
 // for the owner: the run just saves what it got and says it stopped early. SERVER ONLY.
-import { asOfDay } from "@/lib/dates";
 import { computeShopDesk } from "@/lib/desk-service";
 import type { Store } from "@/lib/data/types";
 import { collectAiForecasts } from "./run";
@@ -21,7 +20,7 @@ export async function runShadow(store: Store): Promise<ShadowRunSummary> {
   if (!forecaster || getAiMode() === "off") throw new Error("AI forecasts are switched off.");
 
   const desk = await computeShopDesk(store, { useAi: false }); // the pure Forecast Desk answer, for a fair comparison
-  const runDate = asOfDay();
+  const runDate = desk.asOf; // the shop's last complete day
   const got = await collectAiForecasts({
     forecaster, items: desk.items, results: desk.results, sales: desk.sales, calendar: desk.calendar, onOrder: desk.onOrder,
     asOf: desk.asOf, runDate, deadline: Date.now() + RUN_BUDGET_MS,

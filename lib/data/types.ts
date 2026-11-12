@@ -48,9 +48,28 @@ export interface AiForecastRow {
   low: number | null; high: number | null;
 }
 
+/**
+ * The shop's own "today" (see lib/business-day.ts). It follows the real date unless days were closed ahead of it.
+ * date: the business date. realDate: today in India. simulated: date is ahead of realDate.
+ * sampleShop: only the demo shop may get sample sales. salesToday: how many sales were recorded on the business date.
+ */
+export interface BusinessDay { date: string; realDate: string; simulated: boolean; sampleShop: boolean; salesToday: number }
+
+/** What closing the day did. */
+export interface CloseDayResult { closed: string; businessDate: string; sampleRows: number }
+
 export interface Store {
   mode: "demo" | "live";
   getMe(): Promise<Me>;
+  /** The shop's business date (the same for everybody in the shop). */
+  getBusinessDay(): Promise<BusinessDay>;
+  /**
+   * Owner on the product team only. Today's sales and deliveries become history and the business date moves forward by one.
+   * `day` must be the date the person was looking at. `sample` (demo shop only, fewer than 5 sales that day) are added first.
+   */
+  closeDay(day: string, sample: { itemId: string; qty: number }[]): Promise<CloseDayResult>;
+  /** Owner on the product team only. Back to the real date; removes sample sales and forecasts dated today or later. */
+  resetBusinessDate(): Promise<{ removedSampleSales: number }>;
   /** First sign-in, no shop and no helper invite: make the signed-in person the owner of a new shop (live mode only). */
   createShop(name: string, locality: string, consent: boolean): Promise<{ shopId: string }>;
   /** Owner only: delete the shop, everything in it, the helpers and the owner's own sign-in record (live mode only). */

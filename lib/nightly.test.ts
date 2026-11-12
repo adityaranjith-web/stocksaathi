@@ -1,3 +1,4 @@
+import { realBusinessDay } from "@/lib/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { addDays } from "@/lib/forecast/desk";
 import { asOfDay } from "@/lib/dates";
@@ -32,6 +33,7 @@ afterEach(() => vi.restoreAllMocks());
 describe("what the nightly job saves for one shop", () => {
   const data = shopData();
   const store = {
+    getBusinessDay: realBusinessDay,
     listItems: async () => data.items, listDistributors: async () => [], listSales: async () => data.sales, listCalendar: async () => [], openOrderQty: async () => ({}),
     listAiForecasts: async () => [],
   } as unknown as Store;

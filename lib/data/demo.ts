@@ -6,8 +6,9 @@ import { cookies } from "next/headers";
 import raw from "./demo-data.json";
 import { addDays, type CalendarDay } from "@/lib/forecast/desk";
 import { asOfDay, daysBetween, todayIST } from "@/lib/dates";
+import { effectiveBusinessDate, MAX_DAYS_AHEAD } from "@/lib/business-day";
 import type {
-  AiForecastRow, DeliveryRecord, Distributor, DistributorInput, Helper, ImportResult, ImportRow, Item, ItemInput,
+  AiForecastRow, BusinessDay, CloseDayResult, DeliveryRecord, Distributor, DistributorInput, Helper, ImportResult, ImportRow, Item, ItemInput,
   Me, OpenOrder, OrderRecord, Sale, Shop, Store,
 } from "./types";
 
@@ -16,7 +17,9 @@ interface DemoState {
   items: Item[];
   distributors: Distributor[];
   calendar: CalendarDay[];
-  sales: Sale[];
+  sales: (Sale & { sample?: boolean })[]; // sample = made by "Close the day" for the demo shop
+  /** The shop's own "today" when days were closed ahead of the real date; null follows the real date. */
+  businessDate: string | null;
   deliveries: DeliveryRecord[];
   orders: DemoOrder[];
   helpers: Helper[];
@@ -38,6 +41,7 @@ function load(): DemoState {
     distributors: raw.distributors.map((d) => ({ ...d })),
     calendar: raw.calendar.map((c) => ({ ...c })),
     sales: raw.sales.map(([date, itemId, qty]) => ({ date: addDays(date as string, shift), itemId: itemId as string, qty: qty as number })),
+    businessDate: null,
     deliveries: [],
     orders: [],
     helpers: [{ id: "U02", name: "Karthik", email: "karthik@example.com", status: "Active" }],
@@ -53,6 +57,9 @@ function state(): DemoState {
   return g.__stocksaathiDemo;
 }
 
+/** The shop's business date: never behind the real date. */
+const bizDate = () => effectiveBusinessDate(state().businessDate, todayIST());
+
 const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 export const demoStore: Store = {
@@ -61,6 +68,41 @@ export const demoStore: Store = {
     const role = (await cookies()).get(DEMO_ROLE_COOKIE)?.value === "helper" ? "helper" : "owner";
     const who = raw.users.find((u) => u.role === role);
     return { name: who?.name ?? role, role, isTeam: role === "owner" };
+  },
+  async getBusinessDay(): Promise<BusinessDay> {
+    const date = bizDate();
+    return { date, realDate: todayIST(), simulated: date > todayIST(), sampleShop: true, salesToday: state().sales.filter((x) => x.date === date).length };
+  },
+  async closeDay(day, sample): Promise<CloseDayResult> {
+    const s = state();
+    const date = bizDate();
+    if (day !== date) throw new Error("The shop date has changed. Reload the page and try again.");
+    if (addDays(date, 1) > addDays(todayIST(), MAX_DAYS_AHEAD)) throw new Error("The shop date can be at most 60 days ahead of the real date.");
+    let sampleRows = 0;
+    if (sample.length) {
+      if (s.sales.filter((x) => x.date === date).length >= 5) throw new Error("This day already has 5 or more sales, so it is not filled with sample sales.");
+      for (const r of sample) {
+        const item = s.items.find((i) => i.id === r.itemId);
+        if (!item) continue;
+        s.sales.push({ date, itemId: r.itemId, qty: r.qty, sample: true });
+        item.currentStock = Math.max(0, item.currentStock - r.qty);
+        sampleRows++;
+      }
+    }
+    s.businessDate = addDays(date, 1);
+    return { closed: date, businessDate: s.businessDate, sampleRows };
+  },
+  async resetBusinessDate() {
+    const s = state();
+    const real = todayIST();
+    const removed = s.sales.filter((x) => x.sample && x.date >= real);
+    for (const r of removed) {
+      const item = s.items.find((i) => i.id === r.itemId);
+      if (item) item.currentStock += r.qty;
+    }
+    s.sales = s.sales.filter((x) => !(x.sample && x.date >= real));
+    s.businessDate = null;
+    return { removedSampleSales: removed.length };
   },
   async createShop() { throw new Error("Demo mode has no accounts. Connect a Supabase project to create a shop."); },
   async deleteMyAccount() { throw new Error("Demo mode has no accounts to delete. Restart the server to reset the demo data."); },
@@ -87,7 +129,7 @@ export const demoStore: Store = {
     const s = state();
     const item = s.items.find((i) => i.id === itemId);
     if (!item) throw new Error("Unknown item");
-    s.sales.push({ date: todayIST(), itemId, qty });
+    s.sales.push({ date: bizDate(), itemId, qty });
     item.currentStock = Math.max(0, item.currentStock - qty);
   },
   async addDelivery(itemId, qty) {
@@ -95,7 +137,7 @@ export const demoStore: Store = {
     const item = s.items.find((i) => i.id === itemId);
     if (!item) throw new Error("Unknown item");
     item.currentStock += qty;
-    s.deliveries.push({ date: todayIST(), itemId, qty });
+    s.deliveries.push({ date: bizDate(), itemId, qty });
     for (const o of s.orders) if (!o.delivered && o.lines.some((l) => l.itemId === itemId)) {
       o.lines = o.lines.filter((l) => l.itemId !== itemId);
       if (!o.lines.length) o.delivered = true;
@@ -117,7 +159,7 @@ export const demoStore: Store = {
   async createOrder(distributorId, lines, prepSeconds = null) {
     const s = state();
     const orderId = `PO-${String(s.nextOrder++).padStart(4, "0")}`;
-    s.orders.push({ orderId, distributorId, date: todayIST(), lines: lines.filter((l) => l.qty > 0), delivered: false, prepSeconds });
+    s.orders.push({ orderId, distributorId, date: bizDate(), lines: lines.filter((l) => l.qty > 0), delivered: false, prepSeconds });
     return { orderId };
   },
 

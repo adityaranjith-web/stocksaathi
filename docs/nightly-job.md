@@ -16,6 +16,8 @@ Saving the same night twice replaces the rows. It never doubles them. One shop f
 
 The job uses the same code as the screens (`runShopDesk` in `lib/desk-service.ts`), so a saved forecast equals what the reorder list showed that night. A test checks this.
 
+**The shop's own date, and the demo shop (migration 0008):** each shop is forecast up to the day before **its own business date** (the real last complete day unless days were closed ahead, see `docs/live-setup.md`, section 10). For the demo shop only (`is_sample_shop`), the job first fills every thin day up to that date (fewer than 5 sales) with labelled sample sales (`sales.is_sample`), reloads the shop (stock went down with them) and then runs the Desk, so the demo shop never has a zero-sales gap. It stops filling after 27 Nov 2026. The job's answer shows `"sampleSales"`. No other shop is ever given sample sales. "Close the day" runs the same per-shop code (`runShopNightly`) straight away.
+
 **AI second opinion (optional):** when `AI_MODE` is `shadow` or `blend` and an AI provider is set up (see `docs/ai-integration.md`), the job also asks the AI for each item **after** the rows above are saved, and saves the answers to `ai_forecasts` (one row per item, day and provider; saving twice replaces). It has its own 40-second limit inside the route's 60 seconds and stops asking when the free limit is reached. An AI problem never fails the job and never loses the Forecast Desk rows: it only shows in the job's answer as `"ai": { "provider", "saved", "failed", "stopped" }` (`stopped` is `limit`, `error`, `time` or `null`).
 
 ## How the scorecard uses it

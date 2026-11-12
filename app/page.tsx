@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { getStore } from "@/lib/data";
 import { computeShopDesk } from "@/lib/desk-service";
-import { niceDate } from "@/lib/dates";
+import { niceDate, niceDay } from "@/lib/dates";
+import { addDays } from "@/lib/forecast/desk";
+import { SAMPLE_MIN_SALES } from "@/lib/business-day";
+import { Badge } from "@/components/ui/Badge";
+import BusinessDayControls from "@/components/BusinessDayControls";
 import Glass from "@/components/ui/Glass";
 import Button from "@/components/ui/Button";
 import DotIcon from "@/components/ui/DotIcon";
@@ -14,26 +18,40 @@ import { HOW_IT_WORKS_COOKIE, SCREEN_HELP } from "@/lib/screen-help";
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  await requireOwner(); // BR7: a helper only sees the Sell screen
+  const me = await requireOwner(); // BR7: a helper only sees the Sell screen
   const store = getStore();
-  const [shop, desk] = await Promise.all([store.getShop(), computeShopDesk(store)]);
+  const [shop, desk, day] = await Promise.all([store.getShop(), computeShopDesk(store), store.getBusinessDay()]);
   const results = [...desk.results.values()];
   const reorder = results.filter((r) => r.decision.status === "Reorder today").length;
   const dont = results.filter((r) => r.decision.status === "Don't reorder").length;
   const lowConf = results.filter((r) => r.decision.status === "Reorder today" && r.confidence === "Low").length;
   // The "How StockSaathi works" card shows until the owner closes it (a cookie on this phone remembers).
   const showHowTo = (await cookies()).get(HOW_IT_WORKS_COOKIE)?.value !== "1";
-  const d = (n: number) => n + (showHowTo ? 1 : 0); // the cards below slide in one step later when the card is there
+  // "Close the day" is for the owner on the product team. The cards below slide in one step later for each extra card.
+  const showClose = me.isTeam;
+  const d = (n: number) => n + (showHowTo ? 1 : 0) + (showClose ? 1 : 0);
 
   return (
     <div className="space-y-4">
       <div className="rise px-1">
         <h1 className="text-2xl font-bold leading-tight">{shop.name}</h1>
+        <p className="mt-0.5 flex flex-wrap items-center gap-2 text-sm font-semibold">
+          <span>Shop date: {niceDay(desk.businessDate)}</span>
+          {desk.simulated && <Badge>Simulated date</Badge>}
+        </p>
+        {desk.simulated && <p className="text-xs text-ink-2">Real date: {niceDay(desk.realDate)}</p>}
         <p className="text-sm text-ink-2">{SCREEN_HELP.home}</p>
         <p className="text-xs text-ink-2">{shop.locality} · forecast uses sales up to {niceDate(desk.asOf)}</p>
       </div>
 
-      {showHowTo && <HowItWorks delay={1} />}
+      {showClose && (
+        <BusinessDayControls
+          today={niceDay(desk.businessDate)} next={niceDay(addDays(desk.businessDate, 1))} simulated={desk.simulated}
+          canFill={day.sampleShop && day.salesToday < SAMPLE_MIN_SALES} salesToday={day.salesToday} delay={1}
+        />
+      )}
+
+      {showHowTo && <HowItWorks delay={showClose ? 2 : 1} />}
 
       <Glass as={Link} href="/reorder" dots delay={d(1)} className="press block p-5">
         <DotLabel>Reorder today</DotLabel>

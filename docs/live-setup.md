@@ -47,9 +47,9 @@ If sign-in fails the app now says so: the sign-in page shows "Sign-in did not fi
 
 ## 3. Database migrations
 
-Run the files in `supabase/migrations/` **in order** in the Supabase SQL editor: `0001`, `0002`, `0003`, `0004`, `0005`, `0006`, `0007`. `supabase/seed.sql` adds the demo shop and is optional.
+Run the files in `supabase/migrations/` **in order** in the Supabase SQL editor: `0001`, `0002`, `0003`, `0004`, `0005`, `0006`, `0007`, `0008`. `supabase/seed.sql` adds the demo shop and is optional. After the seed on a fresh project also run `update shops set is_sample_shop = true where name = 'Sri Balaji Stores';` (migration 0008 does this for an existing project).
 
-**Status of your project `stocksaathi`:** `0001` and `0002` were applied earlier. `0003`, `0004`, `0005` and `0006` (the speed migration) were applied on 12 Nov 2026 (with your permission) and `/api/health` then reported nothing missing. `0007` (protects the demo accounts) was applied later the same day, also with your permission. Your 30 items and 822 sales were not changed. What was missing before is in `docs/migration-audit.md`.
+**Status of your project `stocksaathi`:** `0001` and `0002` were applied earlier. `0003`, `0004`, `0005` and `0006` (the speed migration) were applied on 12 Nov 2026 (with your permission) and `/api/health` then reported nothing missing. `0007` (protects the demo accounts) was applied later the same day, also with your permission. `0008` (the shop's business date, "Close the day" and labelled sample sales) was applied on 13 Nov 2026, also with your permission. Your 30 items and 822 real sales were not changed by the migrations. What was missing before is in `docs/migration-audit.md`.
 
 ## 4. Become the owner of "Sri Balaji Stores"
 
@@ -138,3 +138,26 @@ Then make sure the production link works end to end:
 - The nightly job (`vercel.json` cron) runs **only on Production**, so it starts working after step A.
 
 The link is public, but the data is not: nobody can read the shop without signing in, and the sign-in is either Google or one of the two demo accounts (see section 8).
+
+## 10. The shop date and "Close the day" (owner on the product team)
+
+Each shop has **one business date**, stored in the database and the same for every person in the shop (`shops.business_date`, migration 0008). It is shown at the top of **Home** ("Shop date: Fri, 13 Nov"). It normally follows the real date (India time). The Forecast Desk works up to the day **before** the shop date, so today's sales are not in the forecast until the day is closed (or the real day ends).
+
+| Button (Home, owner on the product team only) | What it does |
+|---|---|
+| **Close the day** | Asks once more. Then today's sales and deliveries are final and become history, the shop date moves **forward by one day** (a **Simulated date** badge shows when it is ahead of the real date, with the real date under it), the Forecast Desk runs again at once and saves its rows (`model_forecasts`, `model_scores`, `final_forecasts`) like the nightly job, and the reorder and don't-reorder lists update. The scorecard can then compare yesterday's forecast with what really sold. |
+| **Back to real date** (only when the date is ahead) | Asks once more. Goes back to the real date and removes what the simulation made for today and later: **sample sales** (their units go back in stock) and the **saved forecasts** for those days. **Real sales are never removed.** |
+
+- **Who:** the owner on the product team (`users.is_team`, see section 4). The database refuses everybody else (a normal owner, a helper, the demo accounts). The demo owner is **not** on the team on purpose.
+- **Sales, deliveries and orders** recorded while the date is ahead are dated with the shop date.
+- **The shop date never falls behind the real date.** Once the real date catches up with a simulated date, the shop simply follows the real date again.
+- **At most 60 days ahead** of the real date.
+
+### Sample sales for the demo shop (only "Sri Balaji Stores")
+
+- Only the shop marked `is_sample_shop` can ever get them. Every other shop is never touched (the database refuses, and a test checks it).
+- Each sample sale is a normal sale row with **`sales.is_sample = true`**, so it can always be told apart: `select * from sales where is_sample;`
+- **On Close the day:** when fewer than **5 sales** were recorded that day, a tick box **Fill the day with sample sales** appears.
+- **Every night:** the nightly job fills every day up to yesterday that has fewer than 5 sales, from the first day of sales, so the demo shop never has a zero-sales gap. It **stops after 27 Nov 2026** (`SAMPLE_FILL_UNTIL` in `lib/business-day.ts`).
+- **The pattern** comes from the shop's own history, not from a made-up table: each item's usual size, how often it sells (so the 3 slow items stay slow), and the weekday effect (Sunday and Monday busier). The same day always gets the same sample sales.
+- **Stock:** sample sales lower stock like real ones, so the reorder list reacts, and the owner can record deliveries as usual.

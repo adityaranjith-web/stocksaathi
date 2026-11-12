@@ -4,7 +4,9 @@
     "shops": {
       "id": "0001",
       "name": "0001",
-      "locality": "0001"
+      "locality": "0001",
+      "business_date": "0008",
+      "is_sample_shop": "0008"
     },
     "users": {
       "id": "0001",
@@ -47,7 +49,8 @@
       "sale_date": "0001",
       "quantity": "0001",
       "entry_method": "0001",
-      "logged_by": "0001"
+      "logged_by": "0001",
+      "is_sample": "0008"
     },
     "orders": {
       "id": "0001",
@@ -130,6 +133,8 @@
     "create_shop": "0005",
     "delete_my_account": "0005",
     "daily_sales": "0006",
-    "shop_snapshot": "0006"
+    "shop_snapshot": "0006",
+    "close_day": "0008",
+    "reset_business_date": "0008"
   }
 }

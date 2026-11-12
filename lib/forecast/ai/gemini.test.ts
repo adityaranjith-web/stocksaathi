@@ -1,3 +1,4 @@
+import { realBusinessDay } from "@/lib/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import raw from "@/lib/data/demo-data.json";
 import { addDays, runDesk } from "@/lib/forecast/desk";
@@ -193,6 +194,7 @@ describe("the owner never sees an AI error", () => {
   const list = items(12);
   const d = { items: list, sales: sales(list) };
   const store = (saved: AiForecastRow[][] = [], failSave = false): Store => ({
+    getBusinessDay: realBusinessDay,
     listItems: async () => d.items, listDistributors: async () => [], listSales: async () => d.sales, listCalendar: async () => [], openOrderQty: async () => ({}),
     listAiForecasts: async () => [], saveAiForecasts: async (rows: AiForecastRow[]) => { if (failSave) throw new Error("table missing"); saved.push(rows); },
   }) as unknown as Store;
