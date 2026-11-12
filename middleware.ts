@@ -19,7 +19,8 @@ export async function middleware(req: NextRequest) {
     },
   });
   const { data } = await sb.auth.getUser();
-  const open = req.nextUrl.pathname.startsWith("/login") || req.nextUrl.pathname.startsWith("/auth");
+  // /api/cron/* is called by Vercel's scheduler, which has no Google sign-in. The route checks CRON_SECRET itself.
+  const open = ["/login", "/auth", "/api/cron/"].some((p) => req.nextUrl.pathname.startsWith(p));
   if (!data.user && !open) return NextResponse.redirect(new URL("/login", req.url));
   return res;
 }

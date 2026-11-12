@@ -171,6 +171,9 @@ export const demoStore: Store = {
     s.calendar = s.calendar.filter((c) => c.date !== date);
   },
 
+  // The nightly job needs Supabase, so the demo has no saved forecasts. The scorecard falls back to a back-test.
+  async listSavedForecasts() { return []; },
+
   async listAiForecasts(sinceDate) { return state().aiRows.filter((r) => r.runDate >= sinceDate); },
   async saveAiForecasts(rows) {
     const s = state();

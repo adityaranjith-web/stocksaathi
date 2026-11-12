@@ -9,7 +9,7 @@ A phone app that gives a kirana owner a daily "Reorder today" list. IT for Manag
 | FR1 Record a sale in one tap (works offline) | Done | `/sell` |
 | FR2 Upload past sales as CSV, bad rows listed | Done | `/stock` (More → Stock) |
 | FR3 Set up items and distributors; record deliveries; stock updates | Done | `/setup/items`, `/setup/distributors`, `/deliveries` |
-| FR4 Forecast Desk: 5 models, checked, blended | Done (runs when a page opens) | `lib/forecast/desk.ts` |
+| FR4 Forecast Desk: 5 models, checked, blended | Done. Runs when a page opens, and every night for every shop (Vercel cron) | `lib/forecast/desk.ts`, `/api/cron/nightly` |
 | FR5 Reorder list with quantities and confidence | Done | `/reorder` |
 | FR6 Don't reorder list | Done | `/reorder#dont` |
 | FR7 Edit quantities, share order on WhatsApp | Done | `/reorder` |
@@ -20,7 +20,9 @@ A phone app that gives a kirana owner a daily "Reorder today" list. IT for Manag
 | KPI 2 Order preparation timer | Done | `/reorder`, shown on `/scorecard` |
 | Future AI integration | Plug-in system built, off by default | `docs/ai-integration.md`, `/ai` |
 
-Still to build: the nightly job that stores each model's forecast (so the scorecard can use real past forecasts instead of a back-test), and a cost price per item (slow stock is valued at selling price for now).
+Still to build: a cost price per item (slow stock is valued at selling price for now).
+
+**Nightly job.** A Vercel cron calls `/api/cron/nightly` once a day. It runs the Forecast Desk for every shop and saves `model_forecasts`, `model_scores` and `final_forecasts`; the scorecard reads forecast accuracy from them. It needs two server-only variables, `CRON_SECRET` and `SUPABASE_SERVICE_ROLE_KEY`, and only runs on the Production deployment. Full steps: `docs/nightly-job.md`.
 
 **Roles.** The owner sees everything. A helper sees only the Sell screen. In demo mode use the Owner / Helper switch at the top. In live mode the owner adds a helper by Google email (More → Helpers). A member of the product team is an owner with `is_team = true` in the `users` table; only they see the festival calendar.
 
@@ -36,7 +38,7 @@ With no Supabase keys set, the app uses the Session 6 sample data (30 items, 1,6
 
 ## Go live (Supabase + Vercel, free tiers)
 
-1. Create a Supabase project. In the SQL editor, run `supabase/migrations/0001_schema.sql`, `0002_...sql`, `0003_roles_setup_scorecard_ai.sql`, then `supabase/seed.sql`.
+1. Create a Supabase project. In the SQL editor, run `supabase/migrations/0001_schema.sql`, `0002_...sql`, `0003_roles_setup_scorecard_ai.sql`, `0004_nightly_job.sql`, then `supabase/seed.sql`.
 2. Supabase → Authentication → Providers → Google: turn it on and paste the Google OAuth client ID and secret (Google Cloud console → APIs & Services → Credentials). Add `https://<your-app>.vercel.app/auth/callback` as a redirect URL.
 3. Copy `.env.example` to `.env.local` and fill in the two Supabase values. Add the same two values in Vercel → Project → Settings → Environment Variables.
 4. Push to GitHub and import the repo in Vercel.

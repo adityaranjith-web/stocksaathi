@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { addDays, type SalesSeries } from "@/lib/forecast/desk";
-import { closingStock, compareForecastError, improvementPct, outOfStockItemDays, slowStockValue, walkForwardError } from "./scorecard";
+import { closingStock, compareForecastError, evaluateSavedForecasts, improvementPct, outOfStockItemDays, slowStockValue, walkForwardError } from "./scorecard";
 import { averagePrepSeconds, cleanPrepSeconds, clock, formatPrepTime } from "./prep-time";
 
 const ASOF = "2026-11-10";
@@ -107,6 +107,47 @@ describe("FR10 forecast error: blend against plain 28-day average", () => {
     const a = walkForwardError(weekly, [])!;
     expect(r.blendError).toBeCloseTo(a.blend / 2, 9); // flat item has 0 error
     expect(r.simpleError).toBeCloseTo(a.simple / 2, 9);
+  });
+});
+
+describe("FR10 forecast error from the forecasts the nightly job saved", () => {
+  // Saved on 1 Nov for the next 2 days. Real sales: 2 Nov = 8, 3 Nov = 12, so the real average is 10.
+  const sales = [{ date: "2026-11-02", itemId: "A", qty: 8 }, { date: "2026-11-03", itemId: "A", qty: 12 }];
+  const row = (over = {}) => ({ runDate: "2026-11-01", itemId: "A", horizonDays: 2, blendUnitsPerDay: 9, simpleUnitsPerDay: 7 as number | null, ...over });
+
+  it("measures how far the blend and the plain average were from what really sold", () => {
+    const ev = evaluateSavedForecasts([row()], sales, "2026-11-10");
+    expect(ev.forecasts).toBe(1);
+    expect(ev.blendError).toBeCloseTo(1, 9); // |9 - 10|
+    expect(ev.simpleError).toBeCloseTo(3, 9); // |7 - 10|
+    expect(ev.improvementPct).toBeCloseTo((1 - 1 / 3) * 100, 9);
+  });
+  it("averages many forecasts, counting nights and items", () => {
+    const rows = [row(), row({ blendUnitsPerDay: 12, simpleUnitsPerDay: 10 }), row({ itemId: "B", runDate: "2026-11-02", blendUnitsPerDay: 0, simpleUnitsPerDay: 0 })];
+    const more = [...sales, { date: "2026-11-03", itemId: "B", qty: 4 }, { date: "2026-11-04", itemId: "B", qty: 4 }];
+    const ev = evaluateSavedForecasts(rows, more, "2026-11-10");
+    expect(ev.forecasts).toBe(3);
+    expect(ev.nights).toBe(2);
+    expect(ev.items).toBe(2);
+    expect(ev.blendError).toBeCloseTo((1 + 2 + 4) / 3, 9);
+    expect(ev.simpleError).toBeCloseTo((3 + 0 + 4) / 3, 9);
+  });
+  it("ignores forecasts whose days have not all passed", () => {
+    expect(evaluateSavedForecasts([row()], sales, "2026-11-02").forecasts).toBe(0); // needs up to 3 Nov
+    expect(evaluateSavedForecasts([row()], sales, "2026-11-03").forecasts).toBe(1);
+  });
+  it("ignores rows with no plain-average forecast, and rows outside the window or the item list", () => {
+    expect(evaluateSavedForecasts([row({ simpleUnitsPerDay: null })], sales, "2026-11-10").forecasts).toBe(0);
+    expect(evaluateSavedForecasts([row()], sales, "2026-11-10", { fromRunDate: "2026-11-02" }).forecasts).toBe(0);
+    expect(evaluateSavedForecasts([row()], sales, "2026-11-10", { itemIds: new Set(["Z"]) }).forecasts).toBe(0);
+  });
+  it("a day with no sales counts as zero sold", () => {
+    const ev = evaluateSavedForecasts([row({ blendUnitsPerDay: 0, simpleUnitsPerDay: 5 })], [], "2026-11-10");
+    expect(ev.blendError).toBe(0);
+    expect(ev.simpleError).toBe(5);
+  });
+  it("nothing to check gives no percentage", () => {
+    expect(evaluateSavedForecasts([], [], "2026-11-10")).toMatchObject({ forecasts: 0, improvementPct: null });
   });
 });
 

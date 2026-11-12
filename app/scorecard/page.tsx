@@ -46,12 +46,16 @@ export default async function ScorecardPage() {
           <span className="text-lg font-semibold">{gain !== null && gain < 0 ? "higher" : "lower"}</span>
         </div>
         <p className="mt-2 text-sm text-ink-2">
-          {s.error.items
-            ? `The blended forecast missed ${s.error.blendError.toFixed(2)} units per item per day. The plain 28-day average missed ${s.error.simpleError.toFixed(2)}. Tested on ${s.error.items} items.`
+          {s.error.forecasts
+            ? `The blended forecast missed ${s.error.blendError.toFixed(2)} units per item per day. The plain 28-day average missed ${s.error.simpleError.toFixed(2)}.`
             : "Not enough sales history yet. Items need 14 days of sales."}
         </p>
         <Met ok={gain !== null && gain >= 10}>Target: at least 10% lower</Met>
-        <p className="mt-1 text-xs text-ink-2">Each day&apos;s forecast uses only the days before it, so the test is fair to the plain average.</p>
+        <p className="mt-1 text-xs text-ink-2">
+          {s.error.source === "saved"
+            ? `Measured on ${s.error.forecasts} forecasts saved by the nightly job over ${s.error.nights} nights, checked against what really sold.`
+            : `The nightly job has not saved enough forecasts yet, so this is a back-test on ${s.error.forecasts} items. Each day's forecast uses only the days before it.`}
+        </p>
       </Glass>
 
       <Glass blur={false} delay={3} className="p-5">

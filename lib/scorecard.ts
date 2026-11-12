@@ -110,6 +110,45 @@ export function compareForecastError(seriesList: SalesSeries[], calendarDays: Ca
   return { items: results.length, blendError, simpleError, improvementPct: results.length ? improvementPct(blendError, simpleError) : null };
 }
 
+// The same comparison, from the forecasts the nightly job really saved (the honest version).
+// Each saved forecast says "this item will sell X a day over the next H days". Once those H days have passed we know
+// what really sold, so we can measure how far off the blend and the plain 28-day average (M2) were on that night.
+export interface SavedForecastRow { runDate: string; itemId: string; horizonDays: number; blendUnitsPerDay: number; simpleUnitsPerDay: number | null }
+export interface SavedEvaluation {
+  forecasts: number; // saved forecasts that could be checked
+  nights: number; // different nights they were made on
+  items: number; // different items
+  blendError: number; // average units per day missed by the blend
+  simpleError: number; // same, for the plain 28-day average
+  improvementPct: number | null;
+}
+
+export function evaluateSavedForecasts(rows: SavedForecastRow[], sales: DatedQty[], asOf: string, opts: { fromRunDate?: string; itemIds?: Set<string> } = {}): SavedEvaluation {
+  const byItemDay = new Map<string, number>();
+  for (const s of sales) byItemDay.set(`${s.itemId}|${s.date}`, (byItemDay.get(`${s.itemId}|${s.date}`) ?? 0) + s.qty);
+  let n = 0, blendSum = 0, simpleSum = 0;
+  const nights = new Set<string>();
+  const items = new Set<string>();
+  for (const r of rows) {
+    if (r.simpleUnitsPerDay === null || r.horizonDays < 1) continue;
+    if (opts.fromRunDate && r.runDate < opts.fromRunDate) continue;
+    if (opts.itemIds && !opts.itemIds.has(r.itemId)) continue;
+    if (addDays(r.runDate, r.horizonDays) > asOf) continue; // not every day it covered has passed yet
+    let total = 0;
+    for (let k = 1; k <= r.horizonDays; k++) total += byItemDay.get(`${r.itemId}|${addDays(r.runDate, k)}`) ?? 0;
+    const actual = total / r.horizonDays;
+    blendSum += Math.abs(r.blendUnitsPerDay - actual);
+    simpleSum += Math.abs(r.simpleUnitsPerDay - actual);
+    nights.add(r.runDate); items.add(r.itemId); n++;
+  }
+  const blendError = n ? blendSum / n : 0;
+  const simpleError = n ? simpleSum / n : 0;
+  return { forecasts: n, nights: nights.size, items: items.size, blendError, simpleError, improvementPct: n ? improvementPct(blendError, simpleError) : null };
+}
+
+/** Saved forecasts are used for the scorecard once there are enough of them. Before that, the back-test is shown. */
+export const SAVED_MIN = { forecasts: 40, nights: 3 };
+
 // ---------- 3. Rupee value of slow stock ----------
 // Slow stock = items on the "Don't reorder" list (BR4). Valued at the selling price, because the app
 // does not hold a cost price yet.

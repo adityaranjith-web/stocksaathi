@@ -4,7 +4,8 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { todayIST } from "@/lib/dates";
 import type { CalendarDay } from "@/lib/forecast/desk";
-import type { AiForecastRow, DistributorInput, Helper, ImportResult, ImportRow, Item, ItemInput, Me, OpenOrder, OrderRecord, Store } from "./types";
+import { rowToItem } from "./rows";
+import type { AiForecastRow, DistributorInput, Helper, ImportResult, ImportRow, Item, ItemInput, Me, OpenOrder, OrderRecord, SavedForecast, Store } from "./types";
 
 export async function supabaseServer() {
   const cookieStore = await cookies();
@@ -55,10 +56,7 @@ export const supabaseStore: Store = {
   async listItems() {
     const { sb } = await me();
     const { data } = await sb.from("items").select("*").eq("is_active", true).order("name");
-    return (data ?? []).map((r): Item => ({
-      id: r.id, name: r.name, category: r.category, pack: r.pack, price: Number(r.price), distributorId: r.distributor_id,
-      leadTimeDays: r.lead_time_days, minSafetyStock: r.min_safety_stock, orderCoverDays: r.order_cover_days, currentStock: r.current_stock,
-    }));
+    return (data ?? []).map((r): Item => rowToItem(r));
   },
   async listDistributors() {
     const { sb } = await me();
@@ -69,7 +67,8 @@ export const supabaseStore: Store = {
     const { sb } = await me();
     const out: { date: string; itemId: string; qty: number }[] = [];
     for (let from = 0; ; from += 1000) {
-      const { data } = await sb.from("sales").select("sale_date, item_id, quantity").gte("sale_date", sinceDate).range(from, from + 999);
+      // Ordered by id so pages of 1,000 never repeat or skip a row.
+      const { data } = await sb.from("sales").select("sale_date, item_id, quantity").gte("sale_date", sinceDate).order("id").range(from, from + 999);
       if (!data?.length) break;
       out.push(...data.map((r) => ({ date: r.sale_date, itemId: r.item_id, qty: r.quantity })));
       if (data.length < 1000) break;
@@ -204,6 +203,32 @@ export const supabaseStore: Store = {
     const { sb } = await me();
     const { error } = await sb.from("conditions_calendar").delete().eq("day", date);
     if (error) throw friendly(error, "Only the product team can change the festival calendar.");
+  },
+
+  async listSavedForecasts(sinceDate): Promise<SavedForecast[]> {
+    const { sb } = await me();
+    // Row-level security limits both tables to this shop. The plain 28-day average is model M2.
+    const page = async <T,>(q: (from: number, to: number) => PromiseLike<{ data: T[] | null }>): Promise<T[]> => {
+      const out: T[] = [];
+      for (let from = 0; ; from += 1000) {
+        const { data } = await q(from, from + 999);
+        if (!data?.length) break;
+        out.push(...data);
+        if (data.length < 1000) break;
+      }
+      return out;
+    };
+    const [finals, simples] = await Promise.all([
+      page((a, b) => sb.from("final_forecasts").select("item_id, run_date, units_per_day, horizon_days").gte("run_date", sinceDate).order("run_date").order("item_id").range(a, b)),
+      page((a, b) => sb.from("model_forecasts").select("item_id, run_date, units_per_day").eq("model", "M2").gte("run_date", sinceDate).order("run_date").order("item_id").range(a, b)),
+    ]);
+    const m2 = new Map(simples.map((r) => [`${r.item_id}|${r.run_date}`, Number(r.units_per_day)]));
+    return finals
+      .filter((r) => typeof r.horizon_days === "number" && r.horizon_days > 0)
+      .map((r) => ({
+        runDate: r.run_date, itemId: r.item_id, horizonDays: r.horizon_days as number,
+        blendUnitsPerDay: Number(r.units_per_day), simpleUnitsPerDay: m2.get(`${r.item_id}|${r.run_date}`) ?? null,
+      }));
   },
 
   async listAiForecasts(sinceDate): Promise<AiForecastRow[]> {

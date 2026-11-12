@@ -32,6 +32,15 @@ export interface OrderRecord { orderId: string; date: string; distributorId: str
 
 export interface Helper { id: string; name: string; email: string; status: "Active" | "Invited" }
 
+/**
+ * What the nightly job saved for one item on one night: the blended forecast that orders were based on, and the plain
+ * 28-day average (model M2) made on the same night. Both are units per day over the next horizonDays.
+ */
+export interface SavedForecast {
+  runDate: string; itemId: string; horizonDays: number;
+  blendUnitsPerDay: number; simpleUnitsPerDay: number | null;
+}
+
 /** One AI forecast kept for later checking (see docs/ai-integration.md). */
 export interface AiForecastRow {
   runDate: string; itemId: string; provider: string;
@@ -67,6 +76,9 @@ export interface Store {
   // Festival calendar (product team only)
   saveCalendarDay(day: CalendarDay): Promise<void>;
   deleteCalendarDay(date: string): Promise<void>;
+
+  // Forecasts saved by the nightly job (live mode only; the demo has none)
+  listSavedForecasts(sinceDate: string): Promise<SavedForecast[]>;
 
   // AI forecasts kept for checking
   listAiForecasts(sinceDate: string): Promise<AiForecastRow[]>;

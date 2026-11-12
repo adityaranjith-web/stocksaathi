@@ -27,6 +27,7 @@ npm run build    # next build, also checks types and lint
 - `app/`: screens (`/sell`, `/reorder`, `/deliveries`, `/more`, `/stock`, `/scorecard`, `/item/[id]`, `/setup/*` for items, distributors, helpers and festival calendar, `/ai`, `/login`) and `app/api/*` routes.
 - `lib/auth.ts`: who is signed in. `requireOwner()` / `requireTeam()` for pages, `ownerOnly()` / `teamOnly()` for API routes. Every new owner-only page and route must use one.
 - `lib/scorecard.ts`, `lib/prep-time.ts`, `lib/validate.ts`: pure maths and checks, with tests next to them.
+- `lib/nightly.ts` and `lib/server/`: the nightly job (Vercel cron -> `/api/cron/nightly`). `SUPABASE_SERVICE_ROLE_KEY` and `CRON_SECRET` are read only on the server (`lib/server/supabase-admin.ts`, the cron route). `lib/secrets.test.ts` enforces this. See `docs/nightly-job.md`.
 - `lib/forecast/ai/`: plug-in system for AI forecasts (off by default). See `docs/ai-integration.md`. AI settings are server-only.
 - `supabase/migrations/`, `supabase/seed.sql`: database schema and sample data.
 

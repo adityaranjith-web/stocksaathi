@@ -19,6 +19,22 @@ export function buildSeries(itemId: string, sales: { date: string; itemId: strin
   return { dates, qty: dates.map((d) => byDate.get(d) ?? 0) };
 }
 
+/**
+ * Runs the Forecast Desk for every item of one shop, from data already loaded. No database, no AI.
+ * Used by the screens (through computeShopDesk) and by the nightly job, so both always give the same answer.
+ */
+export function runShopDesk(args: {
+  asOf: string; items: Item[]; sales: { date: string; itemId: string; qty: number }[];
+  calendar: { date: string; name: string; upliftPct: number }[]; onOrder: Record<string, number>;
+}): Map<string, DeskResult> {
+  const results = new Map<string, DeskResult>();
+  for (const it of args.items) {
+    const input = { itemId: it.id, leadTimeDays: it.leadTimeDays, minSafetyStock: it.minSafetyStock, orderCoverDays: it.orderCoverDays, currentStock: it.currentStock, onOrder: args.onOrder[it.id] ?? 0 };
+    results.set(it.id, runDesk(input, buildSeries(it.id, args.sales, args.asOf), args.calendar));
+  }
+  return results;
+}
+
 export interface ShopDesk {
   asOf: string;
   items: Item[];
@@ -39,13 +55,10 @@ export async function computeShopDesk(store: Store, opts: { useAi?: boolean } = 
   const [items, distributors, sales, calendar, onOrder] = await Promise.all([
     store.listItems(), store.listDistributors(), store.listSales(addDays(asOf, -(LOOKBACK_DAYS - 1))), store.listCalendar(), store.openOrderQty(),
   ]);
-  const results = new Map<string, DeskResult>();
-  const inputs = new Map<string, Parameters<typeof runDesk>[0]>();
-  for (const it of items) {
-    const input = { itemId: it.id, leadTimeDays: it.leadTimeDays, minSafetyStock: it.minSafetyStock, orderCoverDays: it.orderCoverDays, currentStock: it.currentStock, onOrder: onOrder[it.id] ?? 0 };
-    inputs.set(it.id, input);
-    results.set(it.id, runDesk(input, buildSeries(it.id, sales, asOf), calendar));
-  }
+  const results = runShopDesk({ asOf, items, sales, calendar, onOrder });
+  const inputs = new Map<string, Parameters<typeof runDesk>[0]>(
+    items.map((it) => [it.id, { itemId: it.id, leadTimeDays: it.leadTimeDays, minSafetyStock: it.minSafetyStock, orderCoverDays: it.orderCoverDays, currentStock: it.currentStock, onOrder: onOrder[it.id] ?? 0 }]),
+  );
 
   const forecaster = opts.useAi === false || getAiMode() !== "blend" ? null : getForecaster();
   if (forecaster) {
