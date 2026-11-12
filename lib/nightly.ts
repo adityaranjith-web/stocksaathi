@@ -72,7 +72,7 @@ export interface NightlySummary {
   /** Sample sales added to the demo shop tonight (see lib/business-day.ts). Always 0 for every other shop. */
   sampleSales: number;
   /** The AI second opinion. It never makes the job fail: a busy or out-of-limit AI just shows up here. */
-  ai: { provider: string | null; saved: number; failed: number; stopped: "limit" | "error" | "time" | null };
+  ai: { provider: string | null; saved: number; failed: number; stopped: "limit" | "error" | "time" | null; firstError: string | null };
 }
 
 /** The AI step must finish well inside the route's 60 seconds (app/api/cron/nightly/route.ts). */
@@ -116,12 +116,12 @@ export async function runShopNightly(db: NightlyDb, shopId: string, runDate: str
  */
 export async function runNightly(
   db: NightlyDb, runDate: string = asOfDay(),
-  opts: { forecaster?: Forecaster | null; aiBudgetMs?: number; now?: () => number } = {},
+  opts: { forecaster?: Forecaster | null; aiBudgetMs?: number; aiPauseMs?: number; now?: () => number } = {},
 ): Promise<NightlySummary> {
   const forecaster = opts.forecaster ?? null;
   const now = opts.now ?? Date.now;
   const aiDeadline = now() + (opts.aiBudgetMs ?? NIGHTLY_AI_BUDGET_MS);
-  const summary: NightlySummary = { runDate, shops: 0, skippedShops: 0, failedShops: 0, items: 0, rows: 0, sampleSales: 0, ai: { provider: forecaster?.id ?? null, saved: 0, failed: 0, stopped: null } };
+  const summary: NightlySummary = { runDate, shops: 0, skippedShops: 0, failedShops: 0, items: 0, rows: 0, sampleSales: 0, ai: { provider: forecaster?.id ?? null, saved: 0, failed: 0, stopped: null, firstError: null } };
   const ids = await db.listShopIds();
   for (const shopId of ids) {
     try {
@@ -135,7 +135,7 @@ export async function runNightly(
       // The Forecast Desk rows are safe. Now, if an AI is set up, ask it for a second opinion. Whatever happens here,
       // it never fails the shop or the job: the Desk's own rows above are already saved.
       if (forecaster && db.saveAiRows && summary.ai.stopped !== "limit" && summary.ai.stopped !== "time") {
-        await runAiStep(db, forecaster, shopId, run.data, run.results, run.asOf, aiDeadline, now, summary);
+        await runAiStep(db, forecaster, shopId, run.data, run.results, run.asOf, aiDeadline, now, opts.aiPauseMs, summary);
       }
     } catch (e) {
       summary.failedShops++;
@@ -147,14 +147,15 @@ export async function runNightly(
 
 async function runAiStep(
   db: NightlyDb, forecaster: Forecaster, shopId: string, data: ShopData, results: Map<string, DeskResult>,
-  runDate: string, deadline: number, now: () => number, summary: NightlySummary,
+  runDate: string, deadline: number, now: () => number, pauseMs: number | undefined, summary: NightlySummary,
 ) {
   try {
-    const got = await collectAiForecasts({ forecaster, items: data.items, results, sales: data.sales, calendar: data.calendar, onOrder: data.onOrder, asOf: runDate, runDate, deadline, now });
+    const got = await collectAiForecasts({ forecaster, items: data.items, results, sales: data.sales, calendar: data.calendar, onOrder: data.onOrder, asOf: runDate, runDate, deadline, now, pauseMs });
     if (got.rows.length) await db.saveAiRows!(shopId, got.rows);
     summary.ai.saved += got.rows.length;
     summary.ai.failed += got.failed;
     if (got.stopped) summary.ai.stopped = got.stopped;
+    summary.ai.firstError ??= got.firstError; // a short, safe reason (no key, no shop data), so the job's answer says why without the logs
     if (got.firstError) console.error(`nightly: AI second opinion for shop ${shopId}: ${got.failed} item(s) without an answer. First reason: ${got.firstError}`);
   } catch (e) {
     summary.ai.stopped = "error";

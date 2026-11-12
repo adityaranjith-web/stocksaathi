@@ -26,7 +26,7 @@ The app carries on with the Forecast Desk and shows the owner **no error**:
 | What happens | What the owner sees | What the app does |
 |---|---|---|
 | The free limit is used up (the service answers 429) | Nothing on the reorder list or Why screen. On the AI forecasts screen after a tap: "The AI could not answer for every item right now. Your orders still use the Forecast Desk, as always." (a calm line, not a red error) | Stops asking at once for this run (nightly: for all shops). The rows already answered are kept. Tomorrow it asks again. |
-| The service is down, slow (30 s) or refuses the key | The same calm line | A failed call is tried once more on the next batch; after two failed calls in a row it stops. |
+| The service is busy (503), slow (20 s per try), cut off or garbled, or refuses the key | The same calm line | A call that may pass later (503 or another 5xx, a dropped connection, an empty or garbled answer, a 429 that says "try again in a few seconds") is **tried again after 2 s, then after 4 s**, as long as there is time left. A refused key (400, 401, 403) is not tried again. A call that still fails loses only its 5 items; after two failed calls in a row the run stops. |
 | One item's answer is missing or silly (negative, not a number) | The same calm line | That item gets no AI row. The others are saved. |
 | The database cannot save the AI rows | The same calm line | Logs the problem and carries on. |
 | The nightly job | Nothing | The Forecast Desk rows are saved **first**. An AI problem is only counted in the job's answer (`"ai": { "saved", "failed", "stopped" }`) and never makes the job fail. |
@@ -37,7 +37,7 @@ Only the owner's **Why this number** screen shows an AI box, and only when an AI
 
 - Google's own page ([rate limits](https://aistudio.google.com/docs/rate-limits)) **no longer publishes the free-tier numbers** for the text models. It says to look at your project's limits in [Google AI Studio](https://aistudio.google.com/rate-limit). Limits apply **per Google Cloud project**, not per key, and daily limits reset at midnight Pacific time. Check the page before you rely on a number.
 - Third-party guides that tracked the figures give about **500 requests per day and 10 requests per minute** for the current Flash-Lite models (older 2025 guides say 1,000 per day and 15 per minute for the older 2.5 model). Treat these as estimates.
-- **How much StockSaathi uses:** the app asks for **10 items in one call**. A shop with 30 items uses **3 calls per run**, so one run a night plus a few button taps stays far below the estimated limits.
+- **How much StockSaathi uses:** the app asks for **5 items in one call**, with a pause of 1.5 seconds between calls. A shop with 30 items uses **6 calls per run** (more when a busy call is tried again), so one run a night plus a few button taps stays far below the estimated limits.
 - **Privacy on the free tier:** Google's pricing page says that on the free tier **content is used to improve Google's products** (on the paid tier it is not). What the app sends is only item names, categories, pack sizes, prices, stock and daily unit sales (see below): no shop, owner, helper, supplier or customer details. If you do not want even that to be used by Google, add billing to the Google project (paid tier) before switching it on for a real shop. For a class project with sample data the free tier is fine.
 - Model: `gemini-3.5-flash-lite` (Google's cheapest, listed as free of charge). Change it with `AI_GEMINI_MODEL` if Google retires it (for example to `gemini-3.1-flash-lite`).
 
@@ -86,7 +86,7 @@ If the AI stops being good, it falls out of the checks and orders go back to the
 
 ## What is sent to the AI
 
-One entry per item (`lib/forecast/ai/payload.ts`). Gemini gets 10 items in one call:
+One entry per item (`lib/forecast/ai/payload.ts`). Gemini gets 5 items in one call:
 
 ```json
 {
@@ -144,4 +144,4 @@ Run it for at least 14 days. Watch **How good is it?**. When it shows **Passed**
 
 - Per-item or per-category choice of model.
 - A per-shop switch: the AI settings apply to the whole deployment.
-- A daily cost cap beyond the free limit. On the free plan Google stops the calls itself (and the app handles that). On a paid plan each run is about 3 calls per 30 items.
+- A daily cost cap beyond the free limit. On the free plan Google stops the calls itself (and the app handles that). On a paid plan each run is about 6 calls per 30 items.

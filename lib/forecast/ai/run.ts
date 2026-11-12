@@ -20,6 +20,8 @@ export interface AiCollected {
 
 /** Items asked at the same time when the provider answers one item per call. */
 const PARALLEL = 4;
+/** A short wait between two calls to a service that answers several items at once. */
+const PAUSE_BETWEEN_CALLS_MS = 1500;
 /** After this many calls in a row fail, stop asking (the service is not working). */
 const MAX_FAILED_CALLS_IN_A_ROW = 2;
 
@@ -32,9 +34,11 @@ export async function collectAiForecasts(args: {
   onOrder: Record<string, number>;
   asOf: string;
   runDate: string;
-  batchSize?: number; // items per call when the provider can answer several at once
+  batchSize?: number; // items per call when the provider can answer several at once (default: the provider's own)
   deadline?: number; // Date.now() value after which no new call is started
   now?: () => number;
+  pauseMs?: number; // wait between two calls, so a busy service or a per-minute limit is not hit (default 1500)
+  sleep?: (ms: number) => Promise<void>;
 }): Promise<AiCollected> {
   const { forecaster, items, results, sales, calendar, onOrder, asOf, runDate } = args;
   const now = args.now ?? Date.now;
@@ -60,13 +64,16 @@ export async function collectAiForecasts(args: {
   };
 
   if (forecaster.forecastMany) {
-    const size = Math.max(1, args.batchSize ?? 10);
+    const size = Math.max(1, args.batchSize ?? forecaster.batchSize ?? 10);
+    const pauseMs = args.pauseMs ?? PAUSE_BETWEEN_CALLS_MS;
+    const sleep = args.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
     let failedInARow = 0;
     for (let i = 0; i < jobs.length; i += size) {
       if (args.deadline !== undefined && now() > args.deadline) { stop("time", i); break; }
+      if (i > 0 && pauseMs > 0) await sleep(pauseMs);
       const batch = jobs.slice(i, i + size);
       try {
-        const answers = await forecaster.forecastMany(batch.map((j) => j.request));
+        const answers = await forecaster.forecastMany(batch.map((j) => j.request), { deadline: args.deadline });
         failedInARow = 0;
         for (const j of batch) {
           const a = answers.get(j.item.id);

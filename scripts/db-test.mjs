@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Live-mode database tests on REAL PostgreSQL. Applies migrations 0001 to 0008 and the seed in order, then plays
+// Live-mode database tests on REAL PostgreSQL. Applies migrations 0001 to 0009 and the seed in order, then plays
 // different people against the row-level security and the two onboarding functions.
 //
 //   TEST_DATABASE_URL=postgres://postgres:postgres@localhost:54329/postgres npm run db:test
@@ -451,6 +451,7 @@ async function main() {
     await c.query(withEmails(demo.owner.email, demo.helper.email)); // twice
     const linked = await q("select id, role, is_demo, shop_id from users where id in ($1,$2) order by role", [demo.owner.id, demo.helper.id]);
     assert(linked.length === 2 && linked[0].role === "helper" && linked[1].role === "owner" && linked.every((u) => u.is_demo && u.shop_id === demoShop), `got ${JSON.stringify(linked)}`);
+    assert((await q("select is_team from users where id = $1", [demo.owner.id]))[0].is_team === true && (await q("select is_team from users where id = $1", [demo.helper.id]))[0].is_team === false, "the demo owner should be on the product team and the demo helper not");
     assert((await q("select count(*)::int n from users where is_demo")).at(0).n === 2, "only the two demo accounts may be marked demo");
 
     // the demo owner sees the demo shop's items and sales, like any owner
@@ -475,7 +476,6 @@ async function main() {
   });
 
   await test("D23", "Business date: close_day and reset_business_date are for the owner on the product team only; sample sales are for the demo shop only and are labelled; going back removes only the simulation (0008)", async () => {
-    const demoOwner = { id: "f6666666-6666-4666-8666-666666666666", email: "demo.owner@example.com", name: "Demo owner" };
     const demoHelper = { id: "f7777777-7777-4777-8777-777777777777", email: "demo.helper@example.com", name: "Demo helper" };
     const real = (await q("select (now() at time zone 'Asia/Kolkata')::date::text d"))[0].d;
     const plus = async (d, n) => (await q("select ($1::date + $2::int)::text d", [d, n]))[0].d;
@@ -492,7 +492,7 @@ async function main() {
 
     // who may NOT close the day: a normal owner (not on the team), the demo owner, a helper, a stranger, anonymous
     await as.admin(); await c.query("update users set is_team = false where id = $1", [people.bala.id]);
-    for (const [who, name] of [[people.bala, "a normal owner"], [demoOwner, "the demo owner"], [demoHelper, "a helper"], [people.dev, "a stranger"]]) {
+    for (const [who, name] of [[people.bala, "a normal owner"], [demoHelper, "a helper"], [people.dev, "a stranger"]]) {
       await as.user(who);
       await refused("select close_day(current_date, null)", [], /Only the owner on the product team/);
       await refused("select reset_business_date()", [], /Only the owner on the product team/);
@@ -564,7 +564,54 @@ async function main() {
     await as.user(people.alice);
     assert((await snapBusiness()).business_date === real, "a past business date was not treated as the real date");
     await as.admin(); await c.query("update shops set business_date = null where id = $1", [demoShop]);
-    return "Only the owner on the product team can close the day or go back (a normal owner, the demo owner, a helper, a stranger and anonymous are all refused). A wrong date is refused. 6 sample sales were added for the demo shop only, labelled is_sample, and cut stock like real sales; a day with 5 or more sales is not filled; another shop's close did not move this shop's date. Going back removed the sample sales and the forecasts for today and later, put stock back, kept every real sale and yesterday's forecast, and a past business date counts as the real date.";
+    return "Only the owner on the product team can close the day or go back (a normal owner, a helper, a stranger and anonymous are all refused). A wrong date is refused. 6 sample sales were added for the demo shop only, labelled is_sample, and cut stock like real sales; a day with 5 or more sales is not filled; another shop's close did not move this shop's date. Going back removed the sample sales and the forecasts for today and later, put stock back, kept every real sale and yesterday's forecast, and a past business date counts as the real date.";
+  });
+
+  await test("D24", "The demo owner is on the product team: it can close the day, go back and edit the festival calendar; it cannot delete the shop; going back never removes a real sale and gives back exactly the stock the sample sales took (0009)", async () => {
+    const demoOwner = { id: "f6666666-6666-4666-8666-666666666666", email: "demo.owner@example.com", name: "Demo owner" };
+    const real = (await q("select (now() at time zone 'Asia/Kolkata')::date::text d"))[0].d;
+    const plus = async (d, n) => (await q("select ($1::date + $2::int)::text d", [d, n]))[0].d;
+    await as.admin();
+    const item = (await q("select id from items where shop_id = $1 order by name limit 1", [demoShop]))[0].id; // an item of the demo shop
+    await c.query("update items set current_stock = 3 where id = $1", [item]);
+    await c.query("update users set is_team = true where id = $1 and is_demo", [demoOwner.id]); // as link_demo_accounts.sql does
+
+    await as.user(demoOwner);
+    // real sales: one today and two on days that have not come yet (as people record them while the date is ahead)
+    const tomorrow = await plus(real, 1);
+    for (const d of [real, tomorrow, tomorrow]) await q("insert into sales (shop_id, item_id, sale_date, quantity, entry_method) values ($1,$2,$3,1,'Quick tap')", [demoShop, item, d]);
+    await as.admin();
+    const realBefore = (await q("select count(*)::int n, coalesce(sum(quantity),0)::int u from sales where not is_sample"))[0];
+    await c.query("update items set current_stock = 3 where id = $1", [item]);
+
+    await as.user(demoOwner);
+    const [{ r: a }] = await q("select close_day($1::date, $2::jsonb) r", [real, JSON.stringify([{ item_id: item, quantity: 5 }])]); // a sample sale bigger than the stock
+    assert(a.business_date === tomorrow, "the demo owner could not close the day: " + JSON.stringify(a));
+    // a sample sale bigger than the stock: it can only take what is there (3), not its 5
+    const b = a;
+    assert(b.sample_rows === 1, "sample sale not added: " + JSON.stringify(b));
+    await as.admin();
+    const taken = (await q("select stock_taken t, quantity qty from sales where is_sample and item_id = $1 and sale_date = $2", [item, real]))[0];
+    assert(taken.t === 3 && taken.qty === 5, "stock_taken should be 3 of 5: " + JSON.stringify(taken));
+    assert((await q("select current_stock s from items where id = $1", [item]))[0].s === 0, "stock should be 0 after the sample sale");
+
+    await as.user(demoOwner);
+    const [{ r: c2 }] = await q("select reset_business_date() r");
+    assert(c2.removed_sample_sales === 1, "reset answered " + JSON.stringify(c2));
+    await as.admin();
+    assert((await q("select current_stock s from items where id = $1", [item]))[0].s === 3, "stock should be back to exactly 3, not 5");
+    const realAfter = (await q("select count(*)::int n, coalesce(sum(quantity),0)::int u from sales where not is_sample"))[0];
+    assert(realAfter.n === realBefore.n && realAfter.u === realBefore.u, "a real sale was removed: " + JSON.stringify([realBefore, realAfter]));
+    assert((await q("select count(*)::int n from sales where is_sample and sale_date >= $1", [real]))[0].n === 0, "sample sales for today or later are still there");
+
+    // still cannot delete the shop; the festival calendar can be edited (team)
+    await as.user(demoOwner);
+    await refused("select delete_my_account('Sri Balaji Stores')", [], /demo account cannot delete/);
+    await q("insert into conditions_calendar (day, name, uplift_pct) values ('2027-02-02','Demo test day',10)");
+    await q("delete from conditions_calendar where day = '2027-02-02'");
+    await as.admin();
+    assert((await q("select count(*)::int n from shops where id = $1", [demoShop]))[0].n === 1, "the shop is gone");
+    return "The demo owner (owner + product team + demo): closed a day, added a sample sale for 5 units on a stock of 3 (it took 3), went back and got exactly 3 back; the 3 real sales (one today, two ahead) are all still there; it cannot delete the shop; it can add and remove a festival day.";
   });
 
   await test("D16", "Delete my account: owner only, must type the shop name, removes the whole shop, helpers and sign-ins, and nothing of any other shop", async () => {
@@ -640,7 +687,7 @@ async function main() {
 }
 
 function report() {
-  results.sort((a, b) => parseInt(a.id.slice(1), 10) - parseInt(b.id.slice(1), 10)); // D1, D2, ... D23
+  results.sort((a, b) => parseInt(a.id.slice(1), 10) - parseInt(b.id.slice(1), 10)); // D1, D2, ... D24
   const lines = ["| ID | Live-mode database check | Result | Evidence |", "|---|---|---|---|"];
   for (const r of results) lines.push(`| ${r.id} | ${r.title} | **${r.status}** | ${r.evidence.replace(/\|/g, "/").replace(/\n/g, " ")} |`);
   const fails = results.filter((r) => r.status === "FAIL").length;

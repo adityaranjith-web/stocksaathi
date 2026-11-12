@@ -61,8 +61,29 @@ export function httpForecaster(url: string, key: string | undefined, timeoutMs =
 /** The model used when AI_GEMINI_MODEL is not set: Google's cheapest, fastest text model (free tier). Change it with AI_GEMINI_MODEL. */
 export const GEMINI_DEFAULT_MODEL = "gemini-3.5-flash-lite";
 export const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
-/** Items answered in one Gemini call. 30 items = 3 calls, so one run uses only a few of the free requests. */
-export const GEMINI_BATCH_SIZE = 10;
+/**
+ * Items answered in one Gemini call. 5 items = 6 calls for a 30-item shop. Smaller calls get smaller answers, which are
+ * less likely to be cut off or to meet a busy service, and a failed call costs only 5 items. (It was 10: on 12 Nov 2026 two
+ * of three calls got "503 service unavailable" from Google and only 10 of 30 items were saved.)
+ */
+export const GEMINI_BATCH_SIZE = 5;
+/** Waits before the 1st and 2nd retry of a call that failed in a way that may pass (busy service, network, garbled answer). */
+export const GEMINI_RETRY_DELAYS_MS = [2000, 4000];
+/** A 429 that says "try again in N seconds" is waited out only if N is at most this long. Otherwise the free limit counts as used up. */
+const MAX_429_WAIT_MS = 10_000;
+
+const pause = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Google's error answer says what kind of problem it is in "error.status" (for example UNAVAILABLE). Only that short word is read. */
+function googleStatusWord(text: string): string {
+  const m = /"status"\s*:\s*"([A-Z_]{3,40})"/.exec(text);
+  return m ? m[1] : "";
+}
+/** "retryDelay": "23s" in a 429 answer. Returns milliseconds, or undefined. */
+function googleRetryDelayMs(text: string): number | undefined {
+  const m = /"retryDelay"\s*:\s*"(\d+(?:\.\d+)?)s"/.exec(text);
+  return m ? Math.round(parseFloat(m[1]) * 1000) : undefined;
+}
 
 const GEMINI_INSTRUCTIONS = [
   "You are a careful demand forecaster for a small Indian kirana (corner) shop.",
@@ -111,10 +132,18 @@ export function parseGeminiAnswers(body: unknown): Map<string, AiForecastResult>
  * Google Gemini through its web API. The key is sent in a header, never in the address, and is never logged.
  * One call answers several items (forecastMany). A 429 (free limit used up) or any failure becomes AiUnavailableError.
  */
-export function geminiForecaster(key: string, model = GEMINI_DEFAULT_MODEL, timeoutMs = 30000, fetchImpl: typeof fetch = fetch): Forecaster {
-  async function many(requests: AiForecastRequest[]): Promise<Map<string, AiForecastResult>> {
+export function geminiForecaster(
+  key: string, model = GEMINI_DEFAULT_MODEL, timeoutMs = 20000, fetchImpl: typeof fetch = fetch,
+  opts: { sleep?: (ms: number) => Promise<void>; retryDelaysMs?: number[] } = {},
+): Forecaster {
+  const sleep = opts.sleep ?? pause;
+  const delays = opts.retryDelaysMs ?? GEMINI_RETRY_DELAYS_MS;
+
+  /** One call to Google. */
+  async function once(requests: AiForecastRequest[], deadline?: number): Promise<Map<string, AiForecastResult>> {
     const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), timeoutMs);
+    const left = deadline === undefined ? timeoutMs : Math.max(1000, Math.min(timeoutMs, deadline - Date.now()));
+    const timer = setTimeout(() => ctl.abort(), left);
     try {
       let res: Response;
       try {
@@ -129,23 +158,51 @@ export function geminiForecaster(key: string, model = GEMINI_DEFAULT_MODEL, time
           signal: ctl.signal,
         });
       } catch {
-        throw new AiUnavailableError("The AI service could not be reached.", "error");
+        // no answer in time, or no connection: it may work a moment later
+        throw new AiUnavailableError("The AI service could not be reached in time.", "error", { retryable: true });
       }
-      if (res.status === 429) throw new AiUnavailableError("The free AI limit is used up for now.", "limit");
-      if (!res.ok) throw new AiUnavailableError(`The AI service answered ${res.status}.`, "error");
+      if (!res.ok) {
+        const text = await res.text().catch(() => "");
+        const word = googleStatusWord(text);
+        const detail = `${res.status}${word ? ` ${word}` : ""}`;
+        if (res.status === 429) {
+          // A short "retryDelay" means a per-minute limit: wait it out once. Otherwise the free limit is used up for today.
+          const wait = googleRetryDelayMs(text);
+          if (wait !== undefined && wait <= MAX_429_WAIT_MS) throw new AiUnavailableError(`The AI service answered ${detail}.`, "limit", { retryable: true, retryAfterMs: wait + 500 });
+          throw new AiUnavailableError(`The free AI limit is used up for now (${detail}).`, "limit");
+        }
+        // 500, 502, 503, 504: the service is busy or restarting, and often answers a moment later. 400 and 403 will not change.
+        throw new AiUnavailableError(`The AI service answered ${detail}.`, "error", { retryable: res.status >= 500 });
+      }
       try {
         return parseGeminiAnswers(await res.json());
       } catch (e) {
-        throw new AiUnavailableError((e as Error).message, "error");
+        // an empty or garbled answer: asking again usually gives a good one
+        throw new AiUnavailableError((e as Error).message, "error", { retryable: true });
       }
     } finally {
       clearTimeout(timer);
     }
   }
 
+  /** One call, tried again (after a short wait) when the failure may pass, as long as there is time left. */
+  async function many(requests: AiForecastRequest[], o: { deadline?: number } = {}): Promise<Map<string, AiForecastResult>> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await once(requests, o.deadline);
+      } catch (e) {
+        if (!(e instanceof AiUnavailableError) || !e.retryable || attempt >= delays.length) throw e;
+        const wait = e.retryAfterMs ?? delays[attempt];
+        if (o.deadline !== undefined && Date.now() + wait + 3000 > o.deadline) throw e; // not enough time left for another try
+        await sleep(wait);
+      }
+    }
+  }
+
   return {
     id: "gemini",
     name: `Google Gemini (${model})`,
+    batchSize: GEMINI_BATCH_SIZE,
     forecastMany: many,
     async forecast(req) {
       const r = (await many([req])).get(req.item.id);

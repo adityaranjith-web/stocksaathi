@@ -47,7 +47,7 @@ If sign-in fails the app now says so: the sign-in page shows "Sign-in did not fi
 
 ## 3. Database migrations
 
-Run the files in `supabase/migrations/` **in order** in the Supabase SQL editor: `0001`, `0002`, `0003`, `0004`, `0005`, `0006`, `0007`, `0008`. `supabase/seed.sql` adds the demo shop and is optional. After the seed on a fresh project also run `update shops set is_sample_shop = true where name = 'Sri Balaji Stores';` (migration 0008 does this for an existing project).
+Run the files in `supabase/migrations/` **in order** in the Supabase SQL editor: `0001`, `0002`, `0003`, `0004`, `0005`, `0006`, `0007`, `0008`, `0009`. `supabase/seed.sql` adds the demo shop and is optional. After the seed on a fresh project also run `update shops set is_sample_shop = true where name = 'Sri Balaji Stores';` (migration 0008 does this for an existing project).
 
 **Status of your project `stocksaathi`:** `0001` and `0002` were applied earlier. `0003`, `0004`, `0005` and `0006` (the speed migration) were applied on 12 Nov 2026 (with your permission) and `/api/health` then reported nothing missing. `0007` (protects the demo accounts) was applied later the same day, also with your permission. `0008` (the shop's business date, "Close the day" and labelled sample sales) was applied on 13 Nov 2026, also with your permission. Your 30 items and 822 real sales were not changed by the migrations. What was missing before is in `docs/migration-audit.md`.
 
@@ -105,9 +105,9 @@ Give the faculty the two emails and passwords **in the submission document, not 
 
 | | Demo owner | Demo helper |
 |---|---|---|
-| Sees | Everything an owner sees | Only the Sell screen, no prices |
-| Can change | Items, stock, orders, deliveries (as a normal owner) | Record sales only |
-| Cannot | **Delete the shop** (refused by the database) and cannot remove the demo helper | Anything owner-only (403) |
+| Sees | Everything an owner sees, **and the product-team tools** (Close the day, Back to real date, the festival calendar) | Only the Sell screen, no prices |
+| Can change | Items, stock, orders, deliveries (as a normal owner), the shop date (Close the day) and the festival calendar | Record sales only |
+| Cannot | **Delete the shop**, and **Back to real date never removes a real sale** (only sample sales); it cannot remove the demo helper
 
 If a demo account is not linked to the shop yet, or has the wrong role, the Demo login signs the person out again and says so in plain words, so a reviewer can never end up creating a shop by accident.
 
@@ -148,7 +148,7 @@ Each shop has **one business date**, stored in the database and the same for eve
 | **Close the day** | Asks once more. Then today's sales and deliveries are final and become history, the shop date moves **forward by one day** (a **Simulated date** badge shows when it is ahead of the real date, with the real date under it), the Forecast Desk runs again at once and saves its rows (`model_forecasts`, `model_scores`, `final_forecasts`) like the nightly job, and the reorder and don't-reorder lists update. The scorecard can then compare yesterday's forecast with what really sold. |
 | **Back to real date** (only when the date is ahead) | Asks once more. Goes back to the real date and removes what the simulation made for today and later: **sample sales** (their units go back in stock) and the **saved forecasts** for those days. **Real sales are never removed.** |
 
-- **Who:** the owner on the product team (`users.is_team`, see section 4). The database refuses everybody else (a normal owner, a helper, the demo accounts). The demo owner is **not** on the team on purpose.
+- **Who:** the owner on the product team (`users.is_team`, see section 4). The database refuses everybody else (a normal owner, a helper). The **demo owner is on the team** (`link_demo_accounts.sql` sets it), so reviewers can try Close the day and the festival calendar; it still cannot delete the shop (migration 0007). The shop date is the same for everybody, so a reviewer who closes a day moves it for you too: use **Back to real date**. Going back gives back exactly the stock the sample sales took (migration 0009).
 - **Sales, deliveries and orders** recorded while the date is ahead are dated with the shop date.
 - **The shop date never falls behind the real date.** Once the real date catches up with a simulated date, the shop simply follows the real date again.
 - **At most 60 days ahead** of the real date.
@@ -160,4 +160,4 @@ Each shop has **one business date**, stored in the database and the same for eve
 - **On Close the day:** when fewer than **5 sales** were recorded that day, a tick box **Fill the day with sample sales** appears.
 - **Every night:** the nightly job fills every day up to yesterday that has fewer than 5 sales, from the first day of sales, so the demo shop never has a zero-sales gap. It **stops after 27 Nov 2026** (`SAMPLE_FILL_UNTIL` in `lib/business-day.ts`).
 - **The pattern** comes from the shop's own history, not from a made-up table: each item's usual size, how often it sells (so the 3 slow items stay slow), and the weekday effect (Sunday and Monday busier). The same day always gets the same sample sales.
-- **Stock:** sample sales lower stock like real ones, so the reorder list reacts, and the owner can record deliveries as usual.
+- **Stock:** sample sales lower stock like real ones (never below 0). Each sample sale records in `sales.stock_taken` what it really took, and **Back to real date** gives back exactly that (migration 0009). The sample sales made before 0009 were assumed to have taken their full quantity; for items that had run out, correct the few rows by hand if you need exact stock (`update sales set stock_taken = 0 where is_sample and sale_date >= current_date and item_id = ...`).

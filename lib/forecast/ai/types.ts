@@ -33,7 +33,9 @@ export interface Forecaster {
    * Returns the answers by item id. An item the model did not answer (or answered badly) is simply missing.
    * Throws AiUnavailableError when the service cannot be used right now.
    */
-  forecastMany?(requests: AiForecastRequest[]): Promise<Map<string, AiForecastResult>>;
+  forecastMany?(requests: AiForecastRequest[], opts?: { deadline?: number }): Promise<Map<string, AiForecastResult>>;
+  /** Items per call when the provider answers several at once (smaller calls fail less often). */
+  batchSize?: number;
 }
 
 /**
@@ -42,8 +44,14 @@ export interface Forecaster {
  * The message is safe to log: it never holds the key or any shop data.
  */
 export class AiUnavailableError extends Error {
-  constructor(message: string, readonly reason: "limit" | "error") {
+  /**
+   * retryable: the same call may work a moment later (the service is busy, a network blip, a garbled answer).
+   * retryAfterMs: how long the service asked us to wait.
+   */
+  constructor(message: string, readonly reason: "limit" | "error", readonly extra: { retryable?: boolean; retryAfterMs?: number } = {}) {
     super(message);
     this.name = "AiUnavailableError";
   }
+  get retryable() { return Boolean(this.extra.retryable); }
+  get retryAfterMs() { return this.extra.retryAfterMs; }
 }

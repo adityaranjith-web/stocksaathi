@@ -55,9 +55,11 @@ begin
       delete from shops where id = v_old;
     end if;
 
-    insert into users (id, shop_id, name, role, email, is_demo)
-      values (v_uid, v_shop, case when v_role = 'owner' then 'Demo owner' else 'Demo helper' end, v_role, v_email, true)
-      on conflict (id) do update set shop_id = excluded.shop_id, role = excluded.role, email = excluded.email, name = excluded.name, is_demo = true;
+    -- The demo OWNER is also on the product team (is_team), so reviewers can try "Close the day" and the festival calendar.
+    -- It still cannot delete the shop (migration 0007), and "Back to real date" never removes a real sale (migrations 0008, 0009).
+    insert into users (id, shop_id, name, role, email, is_demo, is_team)
+      values (v_uid, v_shop, case when v_role = 'owner' then 'Demo owner' else 'Demo helper' end, v_role, v_email, true, v_role = 'owner')
+      on conflict (id) do update set shop_id = excluded.shop_id, role = excluded.role, email = excluded.email, name = excluded.name, is_demo = true, is_team = excluded.is_team;
   end loop;
 
   raise notice 'Done: % is the demo owner and % is the demo helper of "%".', v_owner_email, v_helper_email, v_shop_name;
