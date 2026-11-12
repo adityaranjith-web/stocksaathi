@@ -5,7 +5,7 @@ import DotIcon from "@/components/ui/DotIcon";
 import { DotNumber } from "@/components/ui/DotText";
 import Toast from "@/components/ui/Toast";
 
-type Item = { id: string; name: string; pack: string; price: number };
+type Item = { id: string; name: string; pack: string; price: number | null }; // price is null for a helper
 type Pending = { itemId: string; qty: number };
 const KEY = "stocksaathi.pendingSales";
 
@@ -68,7 +68,7 @@ export default function SellGrid({ items }: { items: Item[] }) {
             <Glass key={it.id} blur={false} className="p-2">
               <button onClick={() => sell(it)} className="press block min-h-[72px] w-full rounded-[18px] px-3 py-3 text-left active:bg-ink active:text-inverse">
                 <span className="block font-semibold leading-tight">{it.name}</span>
-                <span className="mt-1 block text-xs opacity-75">{it.pack} · ₹{it.price}</span>
+                <span className="mt-1 block text-xs opacity-75">{it.price === null ? it.pack : `${it.pack} · ₹${it.price}`}</span>
               </button>
               <div className="mt-1 flex items-center justify-between">
                 <button aria-label={`Less ${it.name}`} onClick={() => setQty((s) => ({ ...s, [it.id]: Math.max(1, q - 1) }))} className="icon-btn"><DotIcon name="minus" size={20} /></button>

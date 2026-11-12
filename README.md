@@ -58,8 +58,14 @@ The festival uplift percentages in the calendar (Deepavali +40% and so on) are t
 
 ## Checks done so far
 
-- `npm test`: 58 unit tests pass. The first 14 (BRD worked example, all business rules, 2,000 random weight sets, the 3 planted slow items) are unchanged. New: scorecard maths, order timer, set-up checks, AI plug-in rules.
+- `npm test`: 85 unit tests pass. The first 14 (BRD worked example, all business rules, 2,000 random weight sets, the 3 planted slow items) are unchanged. New: scorecard maths, order timer, set-up checks, AI plug-in rules, the nightly job and its secret check, and a scan that fails if a secret key shows up in browser code.
 - Phone-size browser test of every screen: sale, offline queue, reorder, WhatsApp share, delivery, CSV upload with 3 bad rows.
 - Database tested on PostgreSQL 16: schema and seed load; a second shop cannot see or change the first shop's data; a helper can record sales but cannot change prices or send orders; stock moves correctly with sales and deliveries.
 - Demo mode, new features: every screen opens as owner; as helper every screen except Sell redirects to Sell and every owner API answers 403; items, distributors, helpers, festival days, deliveries and AI runs tested through the API; order timer tested in the browser.
-- **Not yet tested:** `0003_roles_setup_scorecard_ai.sql` and the live (Supabase) code for the new features. Run the migration in a Supabase project and sign in as an owner and as a helper before relying on them.
+- **Acceptance tests (BRD):** every FR and BR was run against the production build in demo mode: **18 pass, 3 partly, 0 fail** (the 3 "partly" need people or a shop: a hand count, an owner explaining the screen, and the forecast error re-computed by hand). Details, evidence and the failures found and fixed: `docs/acceptance-results.md`. Re-run any time: start the app (`npm run build && npm start`) and run `npm run acceptance` (it adds test data, so restart the server afterwards).
+- **Not yet tested:** migrations `0003` and `0004` and all live (Supabase) code, the Vercel cron, and a real Android phone. Run the migrations in a Supabase project and sign in as an owner and as a helper before relying on them.
+- **Open finding:** on the demo data the blended forecast is about 3% *worse* than the plain 28-day average (BRD wants at least 10% better, and says to fall back to the simple average if worse). The fallback is not built. See the last section of `docs/acceptance-results.md`.
+
+## Testing with real users
+
+`docs/user-test-script.md` is a one-page script for the 5 real users (log 10 sales, read the reorder list, share one order), with the pass marks from the BRD and a sheet to fill in.
