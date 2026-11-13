@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { isLive } from "@/lib/data";
 import { settingsPresent } from "@/lib/server/config-check";
+import { buildVersion } from "@/lib/build-info";
 import { contract, migrationOfColumn, migrationOfFunction, migrationOfTable, migrationsToRun, type Missing } from "@/lib/db-contract";
 
 // Live-mode self-check. Open /api/health on the site to see whether the set-up is complete.
@@ -20,7 +21,8 @@ async function retry<T extends { error: { message?: string } | null }>(run: () =
 
 export async function GET() {
   const env = settingsPresent(); // yes or no per setting; no values
-  if (!isLive) return Response.json({ mode: "demo", note: "Demo mode: no Supabase keys are set, so there is nothing to check.", env }, { headers: NO_STORE });
+  const build = buildVersion(); // the short Git commit this site was built from
+  if (!isLive) return Response.json({ mode: "demo", build, note: "Demo mode: no Supabase keys are set, so there is nothing to check.", env }, { headers: NO_STORE });
 
   const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
   const missing: Missing[] = [];
@@ -66,7 +68,7 @@ export async function GET() {
 
   const ok = reachable && missing.length === 0 && callable.length === 0 && env.NEXT_PUBLIC_SUPABASE_URL && env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   return Response.json({
-    mode: "live", ok, env,
+    mode: "live", build, ok, env,
     migrationsToRun: migrationsToRun(missing),
     missing,
     problems,

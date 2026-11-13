@@ -11,6 +11,7 @@ import DotMeter from "@/components/ui/DotMeter";
 import { ConfidenceBadge } from "@/components/ui/Badge";
 import { DotLabel, DotNumber } from "@/components/ui/DotText";
 import { requireOwner } from "@/lib/auth";
+import { latestAiOpinion, NO_AI_OPINION_YET } from "@/lib/ai-opinion";
 
 export const dynamic = "force-dynamic";
 
@@ -25,9 +26,9 @@ export default async function WhyPage({ params }: { params: Promise<{ id: string
   const forecaster = getForecaster();
   const [desk, aiRows] = await Promise.all([
     computeShopDesk(store),
-    forecaster ? store.listAiForecasts(addDays(asOfDay(), -7)).catch(() => []) : Promise.resolve([]),
+    forecaster ? store.listAiForecasts(addDays(asOfDay(), -7)).catch((e: Error) => { console.error(`why page: the AI forecasts could not be read: ${e.message}`); return []; }) : Promise.resolve([]),
   ]);
-  const ai = forecaster ? aiRows.filter((a) => a.provider === forecaster.id && a.itemId === id).sort((a, b) => b.runDate.localeCompare(a.runDate))[0] : undefined;
+  const ai = forecaster ? latestAiOpinion(aiRows, forecaster.id, id) : undefined;
   const r = desk.results.get(id);
   const it = desk.items.find((i) => i.id === id);
   if (!r || !it) notFound();
@@ -74,9 +75,11 @@ export default async function WhyPage({ params }: { params: Promise<{ id: string
         <p className="mt-2 text-xs text-ink-2">Miss = average units missed per day over the last 14 days. A smaller miss gives a bigger weight (5% to 60%).</p>
       </Glass>
 
-      {ai && (
+      {forecaster && (
         <Glass blur={false} delay={4} className="space-y-2 p-4 text-sm">
           <h2><DotLabel>AI second opinion</DotLabel></h2>
+          {!ai && <p className="text-ink-2">{NO_AI_OPINION_YET}</p>}
+          {ai && <>
           <p className="flex items-baseline gap-2">
             <span className="text-2xl font-bold tabular-nums">{ai.aiUnitsPerDay.toFixed(1)}</span>
             <span>units per day{ai.low !== null && ai.high !== null ? ` (between ${ai.low.toFixed(1)} and ${ai.high.toFixed(1)})` : ""}</span>
@@ -87,6 +90,7 @@ export default async function WhyPage({ params }: { params: Promise<{ id: string
               ? "The AI has passed the checks, so it is mixed into this order."
               : "For checking only. It does not change your order."}
           </p>
+          </>}
         </Glass>
       )}
 

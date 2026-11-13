@@ -3,7 +3,7 @@ import { getStore } from "@/lib/data";
 import { computeShopDesk } from "@/lib/desk-service";
 import { niceDate, niceDay } from "@/lib/dates";
 import { addDays } from "@/lib/forecast/desk";
-import { SAMPLE_MIN_SALES } from "@/lib/business-day";
+import { canCloseDay, SAMPLE_MIN_SALES } from "@/lib/business-day";
 import { Badge } from "@/components/ui/Badge";
 import BusinessDayControls from "@/components/BusinessDayControls";
 import Glass from "@/components/ui/Glass";
@@ -28,7 +28,7 @@ export default async function Home() {
   // The "How StockSaathi works" card shows until the owner closes it (a cookie on this phone remembers).
   const showHowTo = (await cookies()).get(HOW_IT_WORKS_COOKIE)?.value !== "1";
   // "Close the day" is for the owner on the product team. The cards below slide in one step later for each extra card.
-  const showClose = me.isTeam;
+  const showClose = canCloseDay(me);
   const d = (n: number) => n + (showHowTo ? 1 : 0) + (showClose ? 1 : 0);
 
   return (

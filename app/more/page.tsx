@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireOwner } from "@/lib/auth";
 import { MORE_HELP, SCREEN_HELP } from "@/lib/screen-help";
+import { buildVersion } from "@/lib/build-info";
 import { getAiMode } from "@/lib/forecast/ai/registry";
 import Glass from "@/components/ui/Glass";
 import DotIcon, { type DotIconName } from "@/components/ui/DotIcon";
@@ -53,6 +54,9 @@ export default async function MorePage() {
       {group("Set-up", setup, 2)}
       {group("Coming next", extra, 3)}
       {group("Privacy", privacy, 4)}
+      <p className="px-1 text-xs text-ink-2" data-testid="who-and-version">
+        Signed in as {me.name} ({me.role === "owner" ? "owner" : "helper"}{me.isTeam ? ", product team" : ""}).{buildVersion() ? ` Version ${buildVersion()}.` : ""}
+      </p>
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { Doto } from "next/font/google";
 import "./globals.css";
 import BottomNav from "@/components/BottomNav";
 import GlassMode from "@/components/ui/GlassMode";
+import MotionGuard from "@/components/MotionGuard";
 import RoleSwitch from "@/components/RoleSwitch";
 import { Badge } from "@/components/ui/Badge";
 import { isLive } from "@/lib/data";
@@ -43,6 +44,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           </header>
           <main className="px-4 py-3">{children}</main>
         </div>
+        <MotionGuard />
         <BottomNav role={me?.role ?? null} />
       </body>
     </html>

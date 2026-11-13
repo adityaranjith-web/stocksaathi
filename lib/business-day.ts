@@ -124,3 +124,8 @@ export function fillGaps(args: { sales: Pick<Sale, "date" | "itemId" | "qty">[];
   }
   return added;
 }
+
+/** Who sees "Close the day" and "Back to real date" on Home: the owner on the product team (the database checks it again). */
+export function canCloseDay(me: { role: string; isTeam: boolean }): boolean {
+  return me.role === "owner" && me.isTeam === true;
+}

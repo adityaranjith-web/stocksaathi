@@ -238,6 +238,9 @@ body::before {
 
 /* ---------- Motion ---------- */
 .rise { animation: rise 0.7s var(--spring) both; animation-delay: calc(var(--d, 0) * 70ms); }
+/* Fail-safe: a panel must never stay invisible. If the entrance animation does not run (a tab that is not being drawn, a slow phone),
+   MotionGuard sets data-motion="done" after about 1.6 seconds and every panel is shown as it is. */
+html[data-motion="done"] .rise { animation: none; opacity: 1; transform: none; }
 .press { transition: transform 0.45s var(--spring); }
 .press:active { transform: scale(0.98); }
 
