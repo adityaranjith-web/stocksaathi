@@ -1,3 +1,4 @@
+import Link from "next/link";
 import LoginButton from "@/components/LoginButton";
 import DemoLoginForm from "@/components/DemoLoginForm";
 import { demoAccounts } from "@/lib/demo-login";
@@ -32,6 +33,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           </>
         )}
         <p className="text-xs text-ink-2">We store only your name and email to sign you in. No customer details are stored.</p>
+        <p className="text-xs"><Link href="/privacy" className="underline">Privacy policy</Link> · <Link href="/terms" className="underline">Terms</Link></p>
       </Glass>
     </div>
   );

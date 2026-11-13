@@ -23,7 +23,11 @@ export default async function MorePage() {
     { href: "/setup/helpers", icon: "people", title: "Helpers", text: MORE_HELP["/setup/helpers"] },
   ];
   if (me.isTeam) setup.push({ href: "/setup/calendar", icon: "calendar", title: "Festival calendar", text: MORE_HELP["/setup/calendar"] });
-  const privacy: Entry[] = [{ href: "/setup/account", icon: "alert", title: "Your account", text: MORE_HELP["/setup/account"] }];
+  const privacy: Entry[] = [
+    { href: "/setup/account", icon: "alert", title: "Your account", text: MORE_HELP["/setup/account"] },
+    { href: "/privacy", icon: "check", title: "Privacy policy", text: MORE_HELP["/privacy"] },
+    { href: "/terms", icon: "edit", title: "Terms of service", text: MORE_HELP["/terms"] },
+  ];
   const extra: Entry[] = [{ href: "/ai", icon: "ai", title: "AI forecasts", text: getAiMode() === "off" ? MORE_HELP["/ai#off"] : MORE_HELP["/ai"] }];
 
   const group = (label: string, rows: Entry[], d: number) => (

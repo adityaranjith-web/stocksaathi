@@ -19,6 +19,8 @@ export const MORE_HELP = {
   "/setup/account": "Sign out, or delete your shop data.",
   "/ai": "A second opinion on forecasts.",
   "/ai#off": "A second opinion on forecasts. Off for now.",
+  "/privacy": "What we collect and why.",
+  "/terms": "The rules for using the app.",
 } as const;
 
 /** The "How StockSaathi works" card on Home: four steps, in the order the owner uses them. */

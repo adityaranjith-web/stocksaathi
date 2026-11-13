@@ -161,3 +161,17 @@ Each shop has **one business date**, stored in the database and the same for eve
 - **Every night:** the nightly job fills every day up to yesterday that has fewer than 5 sales, from the first day of sales, so the demo shop never has a zero-sales gap. It **stops after 27 Nov 2026** (`SAMPLE_FILL_UNTIL` in `lib/business-day.ts`).
 - **The pattern** comes from the shop's own history, not from a made-up table: each item's usual size, how often it sells (so the 3 slow items stay slow), and the weekday effect (Sunday and Monday busier). The same day always gets the same sample sales.
 - **Stock:** sample sales lower stock like real ones (never below 0). Each sample sale records in `sales.stock_taken` what it really took, and **Back to real date** gives back exactly that (migration 0009). The sample sales made before 0009 were assumed to have taken their full quantity; for items that had run out, correct the few rows by hand if you need exact stock (`update sales set stock_taken = 0 where is_sample and sale_date >= current_date and item_id = ...`).
+
+## 11. Public Privacy Policy and Terms of Service (for Google)
+
+To publish the Google sign-in app (move the OAuth consent screen from Testing to In production), Google needs a Privacy Policy and Terms of Service that **anyone can open without signing in**. The app has both:
+
+| Page | Address | Words |
+|---|---|---|
+| Privacy Policy | `https://YOUR-SITE/privacy` | `lib/legal.ts` (title "StockSaathi Privacy Policy", Last updated 13 November 2026) |
+| Terms of Service | `https://YOUR-SITE/terms` | `lib/legal.ts` (title "StockSaathi Terms of Service") |
+
+- Both are open to signed-out visitors (`lib/open-paths.ts`, used by `middleware.ts`); every other screen still sends a visitor to the sign-in page. A test checks this.
+- They are linked under the buttons on the sign-in page and on **More** (Privacy policy, Terms of service).
+- In Google Cloud Console, OAuth consent screen (Google Auth platform, Branding): put the two addresses in **Application home page**, **Application privacy policy link** and **Application terms of service link**, and add the app's domain under **Authorized domains**. Google may ask you to prove you own that domain; a `*.vercel.app` address you do not own the parent domain of may not be accepted, so a domain of your own may be needed to publish.
+- The policy names what the app really does. If the app starts to collect or send something new, change `lib/legal.ts` and its date first. `lib/legal.test.ts` checks the policy against `docs/ai-integration.md`.

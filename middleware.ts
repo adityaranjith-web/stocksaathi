@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { isOpenPath } from "@/lib/open-paths";
 
 // Live mode only: keeps the Supabase session fresh and sends signed-out users to /login.
 export async function middleware(req: NextRequest) {
@@ -22,10 +23,8 @@ export async function middleware(req: NextRequest) {
     },
   });
   const { data } = await sb.auth.getUser();
-  // /api/cron/* is called by Vercel's scheduler, which has no Google sign-in. The route checks CRON_SECRET itself.
-  // /api/health is the set-up self-check; it must work even when sign-in does not. It returns no data and no keys.
-  // /api/demo-login is the "Demo login" form's route: it is for people who are not signed in yet (and accepts two emails only).
-  const open = ["/login", "/auth", "/api/cron/", "/api/health", "/api/demo-login"].some((p) => req.nextUrl.pathname.startsWith(p));
+  // Which addresses are open to signed-out visitors is decided in lib/open-paths.ts (the sign-in page, the set-up check, the Privacy Policy and Terms, and so on).
+  const open = isOpenPath(req.nextUrl.pathname);
   if (!data.user && !open) return NextResponse.redirect(new URL("/login", req.url));
   return res;
 }
