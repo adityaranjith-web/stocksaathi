@@ -36,11 +36,13 @@ const g = globalThis as unknown as { __stocksaathiDemo?: DemoState };
 
 function load(): DemoState {
   const shift = daysBetween(raw.lastDataDay, asOfDay());
+  // DEMO_NEW_SHOP=1 starts the demo with an empty shop, to show the "Start your shop" guide. Not set: the demo is exactly as before.
+  const fresh = process.env.DEMO_NEW_SHOP === "1";
   return {
-    items: raw.items.map((i) => ({ ...i })),
-    distributors: raw.distributors.map((d) => ({ ...d })),
+    items: fresh ? [] : raw.items.map((i) => ({ ...i })),
+    distributors: fresh ? [] : raw.distributors.map((d) => ({ ...d })),
     calendar: raw.calendar.map((c) => ({ ...c })),
-    sales: raw.sales.map(([date, itemId, qty]) => ({ date: addDays(date as string, shift), itemId: itemId as string, qty: qty as number })),
+    sales: fresh ? [] : raw.sales.map(([date, itemId, qty]) => ({ date: addDays(date as string, shift), itemId: itemId as string, qty: qty as number })),
     businessDate: null,
     deliveries: [],
     orders: [],
@@ -59,6 +61,16 @@ function state(): DemoState {
 
 /** The shop's business date: never behind the real date. */
 const bizDate = () => effectiveBusinessDate(state().businessDate, todayIST());
+
+/** The distributor a new item goes to: the one with that name (made if missing), or with no name the first one (or "My distributor"). */
+function demoDistributor(s: DemoState, name: string): string {
+  const wanted = name.trim();
+  const match = wanted ? s.distributors.find((d) => sameName(d.name, wanted)) : s.distributors[0];
+  if (match) return match.id;
+  const id = `D${s.nextDistributor++}`;
+  s.distributors.push({ id, name: wanted || "My distributor", supplies: "", salesman: "", whatsapp: "", visitDay: "" });
+  return id;
+}
 
 const sameName = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
@@ -161,6 +173,42 @@ export const demoStore: Store = {
     const orderId = `PO-${String(s.nextOrder++).padStart(4, "0")}`;
     s.orders.push({ orderId, distributorId, date: bizDate(), lines: lines.filter((l) => l.qty > 0), delivered: false, prepSeconds });
     return { orderId };
+  },
+
+  // Start your shop (the same steps as the live store, held in memory)
+  async addStarterItems(rows) {
+    const s = state();
+    const taken = new Set(s.items.map((i) => i.name.toLowerCase()));
+    const fresh = rows.filter((r) => !taken.has(r.name.toLowerCase()));
+    const skipped = rows.filter((r) => taken.has(r.name.toLowerCase())).map((r) => r.name);
+    if (!fresh.length) return { added: 0, skipped };
+    const distributorId = demoDistributor(s, "");
+    for (const r of fresh) {
+      s.items.push({ id: `I${s.nextItem++}`, name: r.name, category: "", pack: r.pack, price: 0, distributorId, leadTimeDays: 2, minSafetyStock: 2, orderCoverDays: 7, currentStock: 0, estimatedPerDay: null });
+    }
+    return { added: fresh.length, skipped };
+  },
+  async saveStartNumbers({ distributorName, leadTimeDays, rows }) {
+    const s = state();
+    const distributorId = demoDistributor(s, distributorName);
+    let saved = 0;
+    for (const r of rows) {
+      const it = s.items.find((i) => i.id === r.itemId);
+      if (!it) continue;
+      Object.assign(it, { estimatedPerDay: r.perDay, currentStock: r.stock, leadTimeDays, distributorId, ...(r.price === null ? {} : { price: r.price }) });
+      saved++;
+    }
+    return { saved };
+  },
+  async saveStartHistory(rows) {
+    const s = state();
+    let saved = 0;
+    for (const r of rows) {
+      if (!s.items.some((i) => i.id === r.itemId)) continue;
+      s.sales.push({ date: r.date, itemId: r.itemId, qty: r.qty }); // stock is not lowered: these sales already happened
+      saved++;
+    }
+    return { saved };
   },
 
   async saveItem(id, input: ItemInput) {

@@ -8,6 +8,7 @@ import DotIcon from "@/components/ui/DotIcon";
 import { DotLabel } from "@/components/ui/DotText";
 import { requireOwner } from "@/lib/auth";
 import { SCREEN_HELP } from "@/lib/screen-help";
+import { COLD_START_LABEL } from "@/lib/cold-start-label";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,7 @@ export default async function ReorderPage() {
         .filter((r) => r.decision.status === "Reorder today" && byId.get(r.itemId)?.distributorId === d.id)
         .map((r) => {
           const it = byId.get(r.itemId)!;
-          return { itemId: it.id, name: it.name, pack: it.pack, stock: it.currentStock, suggested: r.decision.orderQty, confidence: r.confidence, perDay: r.forecast };
+          return { itemId: it.id, name: it.name, pack: it.pack, stock: it.currentStock, suggested: r.decision.orderQty, confidence: r.confidence, perDay: r.forecast, coldStart: desk.coldStart.has(it.id) };
         }),
     }))
     .filter((g) => g.lines.length);
@@ -49,6 +50,7 @@ export default async function ReorderPage() {
                 <span>
                   <span className="block font-semibold">{it.name} <span className="text-sm font-normal text-ink-2">· {it.currentStock} in stock</span></span>
                   <span className="block text-sm text-ink-2">{r.decision.reason}</span>
+                  {desk.coldStart.has(r.itemId) && <span className="block text-xs font-semibold">{COLD_START_LABEL}</span>}
                 </span>
                 <DotIcon name="next" size={20} />
               </Link>

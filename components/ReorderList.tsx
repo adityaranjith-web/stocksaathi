@@ -8,8 +8,9 @@ import DotIcon from "@/components/ui/DotIcon";
 import { ConfidenceBadge } from "@/components/ui/Badge";
 import { DotLabel, DotNumber } from "@/components/ui/DotText";
 import { clock, formatPrepTime } from "@/lib/prep-time";
+import { COLD_START_LABEL } from "@/lib/cold-start-label";
 
-export type Line = { itemId: string; name: string; pack: string; stock: number; suggested: number; confidence: "High" | "Medium" | "Low"; perDay: number };
+export type Line = { itemId: string; name: string; pack: string; stock: number; suggested: number; confidence: "High" | "Medium" | "Low"; perDay: number; coldStart?: boolean };
 export type Group = { distributor: { id: string; name: string; salesman: string; whatsapp: string }; lines: Line[] };
 
 function waLink(number: string, text: string) {
@@ -98,6 +99,7 @@ export default function ReorderList({ groups, shopName }: { groups: Group[]; sho
                   <p className="font-semibold leading-tight">{l.name}</p>
                   <p className="text-xs text-ink-2">{l.stock} in stock · sells {l.perDay.toFixed(1)}/day</p>
                   <span className="mt-1.5 inline-flex items-center gap-2"><ConfidenceBadge level={l.confidence} /><span className="text-xs font-semibold underline">Why?</span></span>
+                  {l.coldStart && <p className="mt-1 text-xs font-semibold">{COLD_START_LABEL}</p>}
                 </Link>
                 <div className="mt-2 flex items-center justify-between">
                   <span className="text-sm text-ink-2">Quantity to order</span>

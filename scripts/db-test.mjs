@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Live-mode database tests on REAL PostgreSQL. Applies migrations 0001 to 0009 and the seed in order, then plays
+// Live-mode database tests on REAL PostgreSQL. Applies migrations 0001 to 0010 and the seed in order, then plays
 // different people against the row-level security and the two onboarding functions.
 //
 //   TEST_DATABASE_URL=postgres://postgres:postgres@localhost:54329/postgres npm run db:test
@@ -614,6 +614,46 @@ async function main() {
     return "The demo owner (owner + product team + demo): closed a day, added a sample sale for 5 units on a stock of 3 (it took 3), went back and got exactly 3 back; the 3 real sales (one today, two ahead) are all still there; it cannot delete the shop; it can add and remove a festival day.";
   });
 
+  await test("D25", "Start your shop: items.est_daily_sales is empty for every existing item; only the owner can set it; a second shop cannot see or change it; the snapshot carries it (0010)", async () => {
+    const demoHelper = { id: "f7777777-7777-4777-8777-777777777777", email: "demo.helper@example.com", name: "Demo helper" };
+    await as.admin();
+    const col = (await q("select data_type, numeric_precision p, numeric_scale s from information_schema.columns where table_name = 'items' and column_name = 'est_daily_sales'"))[0];
+    assert(col && col.data_type === "numeric", "the column est_daily_sales does not exist");
+    assert((await q("select count(*)::int n from items where est_daily_sales is not null"))[0].n === 0, "an existing item already has an estimate");
+    const item = (await q("select id from items where shop_id = $1 order by name limit 1", [demoShop]))[0].id;
+
+    // the owner saves the estimate, stock, lead time and price the way the guide does
+    await as.user(people.alice);
+    assert((await rows("update items set est_daily_sales = 8.5, current_stock = 40, lead_time_days = 3, price = 45 where id = $1", [item])) === 1, "the owner could not save the estimate");
+    const [{ s }] = await q("select shop_snapshot((current_date - 55)) s");
+    const inSnap = s.items.find((i) => i.id === item);
+    assert(Number(inSnap.est_daily_sales) === 8.5, "the snapshot does not carry the estimate: " + JSON.stringify(inSnap));
+    assert(s.items.filter((i) => i.est_daily_sales !== null).length === 1, "only the one item has an estimate");
+    await refused("update items set est_daily_sales = -1 where id = $1", [item], /check constraint/); // never below 0
+    // the guide also makes a distributor and new items with no estimate
+    const [{ id: dist }] = await q("insert into distributors (shop_id, name) values ($1, 'My distributor') returning id", [demoShop]);
+    await q("insert into items (shop_id, distributor_id, name, category, pack, price, current_stock, lead_time_days, min_safety_stock, order_cover_days) values ($1,$2,'Start Test Item','','1 kg',0,0,2,2,7)", [demoShop, dist]);
+    assert((await q("select est_daily_sales e from items where name = 'Start Test Item'"))[0].e === null, "a new item should start with no estimate");
+
+    // a helper cannot change it, a second shop cannot see or change it, anonymous cannot do anything
+    await as.user(demoHelper);
+    assert((await rows("update items set est_daily_sales = 99 where id = $1", [item])) === 0, "a helper changed the estimate");
+    await as.user(people.bala);
+    assert((await rows("update items set est_daily_sales = 99 where id = $1", [item])) === 0, "another shop changed the estimate");
+    assert((await q("select count(*)::int n from items where id = $1", [item]))[0].n === 0, "another shop can see the item");
+    const [{ s: other }] = await q("select shop_snapshot((current_date - 55)) s");
+    assert(!JSON.stringify(other).includes('"est_daily_sales": 8.5') && !other.items.some((i) => Number(i.est_daily_sales) === 8.5), "another shop's snapshot holds the estimate");
+    await as.anon();
+    await refused("update items set est_daily_sales = 1", [], /permission denied/);
+    await as.admin();
+    assert(Number((await q("select est_daily_sales e from items where id = $1", [item]))[0].e) === 8.5, "the estimate changed");
+    // put the demo shop back as it was for the tests that follow
+    await c.query("update items set est_daily_sales = null where id = $1", [item]);
+    await c.query("delete from items where name = 'Start Test Item'");
+    await c.query("delete from distributors where id = $1", [dist]);
+    return "No existing item has an estimate. The owner saved estimate, stock, lead time and price (and a new item and distributor); the snapshot returns the estimate; a negative number is refused; a helper and a second shop changed 0 rows and the second shop cannot see the item or its estimate; anonymous is refused.";
+  });
+
   await test("D16", "Delete my account: owner only, must type the shop name, removes the whole shop, helpers and sign-ins, and nothing of any other shop", async () => {
     // give Bala's shop everything: a helper (claimed), an unclaimed invite, orders, deliveries, sales, AI forecasts
     await as.user(people.bala);
@@ -687,7 +727,7 @@ async function main() {
 }
 
 function report() {
-  results.sort((a, b) => parseInt(a.id.slice(1), 10) - parseInt(b.id.slice(1), 10)); // D1, D2, ... D24
+  results.sort((a, b) => parseInt(a.id.slice(1), 10) - parseInt(b.id.slice(1), 10)); // D1, D2, ... D25
   const lines = ["| ID | Live-mode database check | Result | Evidence |", "|---|---|---|---|"];
   for (const r of results) lines.push(`| ${r.id} | ${r.title} | **${r.status}** | ${r.evidence.replace(/\|/g, "/").replace(/\n/g, " ")} |`);
   const fails = results.filter((r) => r.status === "FAIL").length;

@@ -11,6 +11,8 @@ import DotMeter from "@/components/ui/DotMeter";
 import { ConfidenceBadge } from "@/components/ui/Badge";
 import { DotLabel, DotNumber } from "@/components/ui/DotText";
 import { requireOwner } from "@/lib/auth";
+import { COLD_START_LABEL } from "@/lib/cold-start-label";
+import { COLD_START_DAYS } from "@/lib/cold-start";
 import { latestAiOpinion, NO_AI_OPINION_YET } from "@/lib/ai-opinion";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +35,7 @@ export default async function WhyPage({ params }: { params: Promise<{ id: string
   const it = desk.items.find((i) => i.id === id);
   if (!r || !it) notFound();
   const d = r.decision;
+  const cold = desk.coldStart.get(id); // the owner's own estimate is the forecast (fewer than 14 days of sales)
   const onOrder = desk.onOrder[id] ?? 0;
 
   return (
@@ -56,7 +59,22 @@ export default async function WhyPage({ params }: { params: Promise<{ id: string
         <ConfidenceBadge level={r.confidence} />
       </Glass>
 
-      <Glass blur={false} delay={3} className="p-4">
+      {cold && (
+        <Glass blur={false} delay={3} className="space-y-2 p-4 text-sm">
+          <h2><DotLabel>{COLD_START_LABEL}</DotLabel></h2>
+          <p>Your estimate: <b>{cold.estimate.toFixed(1)}</b> units per day.</p>
+          <p>
+            {cold.daysOfData > 0
+              ? <>Real sales so far: <b>{cold.realAvg.toFixed(1)}</b> units per day, over {cold.daysOfData} day{cold.daysOfData === 1 ? "" : "s"}.</>
+              : <>No sales yet, so your estimate is used as it is.</>}
+          </p>
+          <p>Weight on real sales: {cold.daysOfData} of {COLD_START_DAYS} days = {Math.round(cold.weightReal * 100)}%.</p>
+          <p className="font-semibold">Forecast = {Math.round(cold.weightReal * 100)}% of real sales + {100 - Math.round(cold.weightReal * 100)}% of your estimate = {cold.forecast.toFixed(2)} units per day.</p>
+          <p className="text-ink-2">After {COLD_START_DAYS} days of sales, your own sales take over completely and the five models do the forecast.</p>
+        </Glass>
+      )}
+
+      {!cold && <Glass blur={false} delay={3} className="p-4">
         <h2 className="mb-2"><DotLabel>What each model says (units per day)</DotLabel></h2>
         <table className="w-full text-sm">
           <thead><tr className="text-left text-ink-2"><th className="py-1 font-semibold">Model</th><th className="pl-3 text-right font-semibold">Forecast</th><th className="pl-3 text-right font-semibold">Miss</th><th className="pl-3 text-right font-semibold">Weight</th></tr></thead>
@@ -73,7 +91,7 @@ export default async function WhyPage({ params }: { params: Promise<{ id: string
           </tbody>
         </table>
         <p className="mt-2 text-xs text-ink-2">Miss = average units missed per day over the last 14 days. A smaller miss gives a bigger weight (5% to 60%).</p>
-      </Glass>
+      </Glass>}
 
       {forecaster && (
         <Glass blur={false} delay={4} className="space-y-2 p-4 text-sm">

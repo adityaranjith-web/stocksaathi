@@ -13,6 +13,8 @@ import { DotLabel, DotNumber } from "@/components/ui/DotText";
 import { requireOwner } from "@/lib/auth";
 import { cookies } from "next/headers";
 import HowItWorks from "@/components/HowItWorks";
+import StartYourShop from "@/components/StartYourShop";
+import { showStartCard } from "@/lib/start-shop";
 import { HOW_IT_WORKS_COOKIE, SCREEN_HELP } from "@/lib/screen-help";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +32,22 @@ export default async function Home() {
   // "Close the day" is for the owner on the product team. The cards below slide in one step later for each extra card.
   const showClose = canCloseDay(me);
   const d = (n: number) => n + (showHowTo ? 1 : 0) + (showClose ? 1 : 0);
+
+  // A new shop (fewer than 3 items, or in the middle of the guide with nothing sold yet) sees the "Start your shop" card
+  // INSTEAD of the normal panels. Every shop that has items and sales, like the demo shop, sees Home exactly as before.
+  const start = { items: desk.items.length, itemsWithoutEstimate: desk.items.filter((i) => i.estimatedPerDay == null).length, salesCount: desk.sales.length };
+  if (showStartCard(start)) {
+    return (
+      <div className="space-y-4">
+        <div className="rise px-1">
+          <h1 className="text-2xl font-bold leading-tight">{shop.name}</h1>
+          <p className="mt-0.5 text-sm font-semibold">Shop date: {niceDay(desk.businessDate)}</p>
+          {shop.locality && <p className="text-xs text-ink-2">{shop.locality}</p>}
+        </div>
+        <StartYourShop input={start} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">

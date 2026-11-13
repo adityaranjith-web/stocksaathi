@@ -14,6 +14,7 @@ Checked on 12 Nov 2026 three ways: (1) the code's needs are written down in `lib
 | `0006_performance.sql` | Faster, same rules: policies call the helper functions once per query and no longer overlap; indexes on `shop_id`; read-only functions `daily_sales()` and `shop_snapshot()` (see `docs/performance.md`) |
 | `0008_business_date.sql` | `shops.business_date` and `shops.is_sample_shop`; `sales.is_sample`; functions `close_day()` and `reset_business_date()` (owner on the product team only); `shop_snapshot()` also returns the business date (see `docs/live-setup.md`, section 10) |
 | `0009_sample_stock_taken.sql` | `sales.stock_taken` (what a sample sale really took off stock, never below 0); `on_sale()` records it; `reset_business_date()` gives back exactly that, so "Back to real date" can no longer make stock out of nothing; it still removes sample sales only |
+| `0010_item_estimate.sql` | `items.est_daily_sales` (the owner's own "sells per day" guess for a new item; empty for every existing item); `shop_snapshot()` returns it. Used only until an item has 14 days of sales (see `docs/live-setup.md`, section 12) |
 | `0007_demo_accounts.sql` | `users.is_demo` (false for everyone; set only by `supabase/link_demo_accounts.sql`); `delete_my_account()` refuses a demo account; the "remove helper" rule skips a demo helper. The app's code does not read `is_demo`, so `/api/health` does not list it (see `docs/live-setup.md`, section 8) |
 
 ## What your project was missing

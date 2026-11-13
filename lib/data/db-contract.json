@@ -40,7 +40,8 @@
       "lead_time_days": "0001",
       "min_safety_stock": "0001",
       "order_cover_days": "0001",
-      "is_active": "0001"
+      "is_active": "0001",
+      "est_daily_sales": "0010"
     },
     "sales": {
       "id": "0001",

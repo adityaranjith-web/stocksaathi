@@ -11,6 +11,8 @@ export interface DistributorInput { name: string; supplies: string; salesman: st
 export interface Item {
   id: string; name: string; category: string; pack: string; price: number; distributorId: string;
   leadTimeDays: number; minSafetyStock: number; orderCoverDays: number; currentStock: number;
+  /** The owner's own guess of units sold per day ("Start your shop"). Used only until the item has 14 days of sales. null = none. */
+  estimatedPerDay?: number | null;
 }
 /** What the owner types on the item set-up screen. openingStock is used only when adding a new item. */
 export interface ItemInput {
@@ -87,6 +89,14 @@ export interface Store {
   addDelivery(itemId: string, qty: number): Promise<void>;
   importSales(rows: ImportRow[]): Promise<ImportResult>;
   createOrder(distributorId: string, lines: { itemId: string; qty: number }[], prepSeconds?: number | null): Promise<{ orderId: string }>;
+
+  // Start your shop (owner only; docs/live-setup.md, section 12)
+  /** Step 1: add the ticked items (stock 0). Items whose name already exists are skipped. A first distributor is made if there is none. */
+  addStarterItems(items: { name: string; pack: string }[]): Promise<{ added: number; skipped: string[] }>;
+  /** Step 2: each item's "sells per day" estimate, stock now and (optional) price; one distributor name and lead time for them all. */
+  saveStartNumbers(args: { distributorName: string; leadTimeDays: number; rows: { itemId: string; perDay: number; stock: number; price: number | null }[] }): Promise<{ saved: number }>;
+  /** Step 3: past sales typed in a table. Stock stays as the owner entered it for today (these sales already happened). */
+  saveStartHistory(rows: { itemId: string; date: string; qty: number }[]): Promise<{ saved: number }>;
 
   // Set-up (owner only)
   saveItem(id: string | null, input: ItemInput): Promise<{ id: string }>;

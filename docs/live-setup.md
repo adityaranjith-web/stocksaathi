@@ -175,3 +175,19 @@ To publish the Google sign-in app (move the OAuth consent screen from Testing to
 - They are linked under the buttons on the sign-in page and on **More** (Privacy policy, Terms of service).
 - In Google Cloud Console, OAuth consent screen (Google Auth platform, Branding): put the two addresses in **Application home page**, **Application privacy policy link** and **Application terms of service link**, and add the app's domain under **Authorized domains**. Google may ask you to prove you own that domain; a `*.vercel.app` address you do not own the parent domain of may not be accepted, so a domain of your own may be needed to publish.
 - The policy names what the app really does. If the app starts to collect or send something new, change `lib/legal.ts` and its date first. `lib/legal.test.ts` checks the policy against `docs/ai-integration.md`.
+
+## 12. "Start your shop" (a new shop gets a forecast at once)
+
+A new Google user creates a shop and has no items and no sales. Home then shows a **Start your shop** card instead of the normal panels, with three steps and a tick for each finished step:
+
+| Step | Screen | What the owner does |
+|---|---|---|
+| 1. Add items | `/start/items` | Ticks items from a ready list of 42 common kirana items (each with a typical unit), renames them, adds their own, and taps **Add selected**. |
+| 2. Usual sales and stock | `/start/numbers` | For each item: **About how many sell per day?** and **How many in the shop now?** (optional price). One distributor name (empty = "My distributor") and lead time (default 2 days) for all. |
+| 3. Past sales (optional) | `/start/history` | A link to the existing upload (Stock screen), or a table of the last 7 days, item by item. |
+
+- **When the card shows:** the shop has fewer than 3 items, or it has items without a "sells per day" number and **nothing has been sold yet** (a new shop in the middle of the guide). A shop with sales, like the demo shop and every existing shop, sees Home exactly as before (`showStartCard` in `lib/start-shop.ts`).
+- **The forecast (cold start, `lib/cold-start.ts`):** an item with the owner's estimate and **fewer than 14 days of sales** is forecast as `w x real sales per day + (1 - w) x estimate`, where `w = days of data / 14`. Items marked **Your estimate, learning from your sales** always have **Low** confidence, on the reorder list and on Why this number (which shows the working). From 14 days of sales the estimate is not used and the Forecast Desk works as always. The Forecast Desk file is not changed; items with no estimate are exactly as before. The nightly job uses the same numbers.
+- **Past sales and stock:** the stock the owner types is for today, so typing past sales does not lower it.
+- **Migration `0010_item_estimate.sql`** adds `items.est_daily_sales` (empty for every existing item) and returns it from `shop_snapshot()`. **Run it in the Supabase SQL editor before using the guide.** Until then the screens still open, existing shops look the same, and saving step 2 says "The database is out of date: run migration 0010". `/api/health` names it too.
+- **See it in demo mode:** start the app with `DEMO_NEW_SHOP=1` (for example `DEMO_NEW_SHOP=1 npm run dev`) for an empty demo shop. Without it the demo is exactly as before.

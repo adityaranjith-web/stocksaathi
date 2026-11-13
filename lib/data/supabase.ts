@@ -45,7 +45,7 @@ export interface Snapshot {
   shop: { id: string; name: string; locality: string | null } | null;
   /** The shop's business date (migration 0008). Missing in an older snapshot: then the real date counts. */
   business?: { business_date: string; real_date: string; is_sample_shop: boolean; sales_today: number } | null;
-  items: { id: string; distributor_id: string; name: string; category: string | null; pack: string | null; price: number | string; current_stock: number; lead_time_days: number; min_safety_stock: number; order_cover_days: number }[];
+  items: { id: string; distributor_id: string; name: string; category: string | null; pack: string | null; price: number | string; current_stock: number; lead_time_days: number; min_safety_stock: number; order_cover_days: number; est_daily_sales?: number | string | null }[];
   distributors: { id: string; name: string; supplies: string | null; salesman: string | null; whatsapp: string | null; visit_day: string | null }[];
   sales: [string, string, number][]; // [item_id, date, quantity]: one entry per item per day
   calendar: { day: string; name: string; uplift_pct: number }[];
@@ -139,6 +139,22 @@ function friendly(error: { code?: string; message: string }, fallback: string, d
   if (error.code === "23505") return new Error(duplicate);
   if (error.code === "42501") return new Error("Only the owner can do this.");
   return new Error(fallback || error.message);
+}
+
+/**
+ * The distributor a new item goes to. With a name: the one with that name (any capitals), made if there is none.
+ * With no name: the shop's first distributor, or one called "My distributor" (an item needs a distributor to appear on the reorder list).
+ */
+async function ensureDistributor(sb: Awaited<ReturnType<typeof supabaseServer>>, shopId: string, name: string): Promise<string> {
+  const all = await sb.from("distributors").select("id, name").order("name");
+  if (all.error) throw new Error(setupMessage(all.error.message));
+  const list = all.data ?? [];
+  const wanted = name.trim();
+  const match = wanted ? list.find((d) => String(d.name).toLowerCase() === wanted.toLowerCase()) : list[0];
+  if (match) return match.id as string;
+  const made = await sb.from("distributors").insert({ shop_id: shopId, name: wanted || "My distributor" }).select("id").single();
+  if (made.error || !made.data) throw friendly(made.error ?? { message: "" }, "The distributor was not saved. Only the owner can add distributors.");
+  return made.data.id as string;
 }
 
 export const supabaseStore: Store = {
@@ -268,6 +284,54 @@ export const supabaseStore: Store = {
     const { error: e2 } = await sb.from("order_lines").insert(lines.filter((l) => l.qty > 0).map((l) => ({ order_id: data.id, item_id: l.itemId, quantity: l.qty })));
     if (e2) throw new Error(e2.message);
     return { orderId: data.id };
+  },
+
+  // ----- Start your shop (owner only: the item and distributor policies already allow only the owner) -----
+  async addStarterItems(rows) {
+    const { sb, user } = await lightMe();
+    const have = await sb.from("items").select("name"); // includes items that were stopped: a name can be used once per shop
+    if (have.error) throw new Error(setupMessage(have.error.message));
+    const taken = new Set((have.data ?? []).map((r) => String(r.name).toLowerCase()));
+    const fresh = rows.filter((r) => !taken.has(r.name.toLowerCase()));
+    const skipped = rows.filter((r) => taken.has(r.name.toLowerCase())).map((r) => r.name);
+    if (!fresh.length) return { added: 0, skipped };
+    const distributorId = await ensureDistributor(sb, user.shop_id, "");
+    const { error } = await sb.from("items").insert(fresh.map((r) => ({
+      shop_id: user.shop_id, distributor_id: distributorId, name: r.name, category: "", pack: r.pack, price: 0, current_stock: 0,
+      lead_time_days: 2, min_safety_stock: 2, order_cover_days: 7,
+    })));
+    if (error) throw friendly(error, "The items were not added. Only the owner can add items.");
+    return { added: fresh.length, skipped };
+  },
+  async saveStartNumbers({ distributorName, leadTimeDays, rows }) {
+    const { sb, user } = await lightMe();
+    const distributorId = await ensureDistributor(sb, user.shop_id, distributorName);
+    for (let i = 0; i < rows.length; i += 10) {
+      const done = await Promise.all(rows.slice(i, i + 10).map((r) => sb.from("items").update({
+        est_daily_sales: r.perDay, current_stock: r.stock, lead_time_days: leadTimeDays, distributor_id: distributorId, ...(r.price === null ? {} : { price: r.price }),
+      }).eq("id", r.itemId)));
+      const bad = done.find((d) => d.error);
+      if (bad?.error) throw new Error(/est_daily_sales/.test(bad.error.message) ? setupMessage(bad.error.message) : friendly(bad.error, "The numbers were not saved. Only the owner can change items.").message);
+    }
+    return { saved: rows.length };
+  },
+  async saveStartHistory(rows) {
+    const { sb, user } = await lightMe();
+    const ids = [...new Set(rows.map((r) => r.itemId))];
+    // The stock the owner typed is for TODAY, and these sales already happened. A sale lowers stock (a database rule), so
+    // the stock is read first and put back exactly after the sales are saved.
+    const before = await sb.from("items").select("id, current_stock").in("id", ids);
+    if (before.error) throw new Error(setupMessage(before.error.message));
+    const stock = new Map((before.data ?? []).map((r) => [r.id as string, r.current_stock as number]));
+    const known = rows.filter((r) => stock.has(r.itemId));
+    for (let i = 0; i < known.length; i += 500) {
+      const { error } = await sb.from("sales").insert(known.slice(i, i + 500).map((r) => ({
+        shop_id: user.shop_id, item_id: r.itemId, sale_date: r.date, quantity: r.qty, entry_method: "CSV upload", logged_by: user.id, // typed in a table, saved like an upload
+      })));
+      if (error) throw new Error(error.message);
+    }
+    await Promise.all([...stock].map(([id, s]) => sb.from("items").update({ current_stock: s }).eq("id", id)));
+    return { saved: known.length };
   },
 
   async saveItem(id, input: ItemInput) {

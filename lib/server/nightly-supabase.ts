@@ -28,7 +28,7 @@ export function supabaseNightlyDb(sb: SupabaseClient): NightlyDb {
       // The shop's own "today" and whether it is the demo shop (migration 0008).
       const { data: shop, error: e0 } = await sb.from("shops").select("business_date, is_sample_shop").eq("id", shopId).single();
       if (e0) throw new Error(`shops: ${e0.message}`);
-      const { data: items, error: e1 } = await sb.from("items").select("id, distributor_id, name, category, pack, price, current_stock, lead_time_days, min_safety_stock, order_cover_days").eq("shop_id", shopId).eq("is_active", true);
+      const { data: items, error: e1 } = await sb.from("items").select("id, distributor_id, name, category, pack, price, current_stock, lead_time_days, min_safety_stock, order_cover_days, est_daily_sales").eq("shop_id", shopId).eq("is_active", true);
       if (e1) throw new Error(`items: ${e1.message}`);
 
       const sales: ShopData["sales"] = [];
