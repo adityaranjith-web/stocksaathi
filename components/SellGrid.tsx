@@ -4,19 +4,18 @@ import Glass from "@/components/ui/Glass";
 import DotIcon from "@/components/ui/DotIcon";
 import { DotNumber } from "@/components/ui/DotText";
 import Toast from "@/components/ui/Toast";
+import { enqueue, flushQueue, waiting, type QueueStorage } from "@/lib/offline-queue";
 
 type Item = { id: string; name: string; pack: string; price: number | null }; // price is null for a helper
-type Pending = { itemId: string; qty: number };
 const KEY = "stocksaathi.pendingSales";
 
-function readQueue(): Pending[] {
-  try { return JSON.parse(localStorage.getItem(KEY) ?? "[]"); } catch { return []; }
-}
-function writeQueue(q: Pending[]) {
-  try { localStorage.setItem(KEY, JSON.stringify(q)); } catch { /* storage blocked */ }
-}
+// The sales waiting on the phone. See lib/offline-queue.ts: every sale is sent exactly once.
+const store: QueueStorage = {
+  read() { try { return JSON.parse(localStorage.getItem(KEY) ?? "[]"); } catch { return []; } },
+  write(q) { try { localStorage.setItem(KEY, JSON.stringify(q)); } catch { /* storage blocked */ } },
+};
 
-async function send(p: Pending) {
+async function send(p: { itemId: string; qty: number }) {
   const res = await fetch("/api/sales", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) });
   if (!res.ok) throw new Error(await res.text());
 }
@@ -28,13 +27,11 @@ export default function SellGrid({ items }: { items: Item[] }) {
 
   // FR1: sales made while offline are kept on the phone and sent when the network returns.
   const flush = useCallback(async () => {
-    const q = readQueue();
-    const left: Pending[] = [];
-    for (const p of q) { try { await send(p); } catch { left.push(p); } }
-    writeQueue(left); setPending(left.length);
+    await flushQueue(store, send);
+    setPending(waiting(store));
   }, []);
   useEffect(() => {
-    setPending(readQueue().length);
+    setPending(waiting(store));
     flush();
     window.addEventListener("online", flush);
     return () => window.removeEventListener("online", flush);
@@ -46,7 +43,7 @@ export default function SellGrid({ items }: { items: Item[] }) {
       await send(p);
       setToast(`Saved: ${item.name} × ${p.qty}`);
     } catch {
-      const q = [...readQueue(), p]; writeQueue(q); setPending(q.length);
+      setPending(enqueue(store, p));
       setToast(`No network. Saved on phone: ${item.name} × ${p.qty}`);
     }
     setQty((s) => ({ ...s, [item.id]: 1 }));
