@@ -8,16 +8,10 @@ import DotIcon from "@/components/ui/DotIcon";
 import { ConfidenceBadge } from "@/components/ui/Badge";
 import { DotLabel, DotNumber } from "@/components/ui/DotText";
 import { clock, formatPrepTime } from "@/lib/prep-time";
+import { waLink, whatsappDigits } from "@/lib/whatsapp";
 
 export type Line = { itemId: string; name: string; pack: string; stock: number; suggested: number; confidence: "High" | "Medium" | "Low"; perDay: number };
 export type Group = { distributor: { id: string; name: string; salesman: string; whatsapp: string }; lines: Line[] };
-
-function waLink(number: string, text: string) {
-  const digits = number.replace(/\D/g, "");
-  // Masked or missing numbers open WhatsApp with the text so the owner can pick the contact.
-  const valid = digits.length >= 10 && !/x/i.test(number);
-  return `https://wa.me/${valid ? digits : ""}?text=${encodeURIComponent(text)}`;
-}
 
 /**
  * KPI 2: how long it takes to prepare an order. Starts when the list opens and stops at Share.
@@ -110,6 +104,9 @@ export default function ReorderList({ groups, shopName }: { groups: Group[]; sho
             <Button full icon={sent[g.distributor.id] ? "check" : "share"} onClick={() => share(g)} disabled={busy === g.distributor.id}>
               {sent[g.distributor.id] ? `Sent as ${sent[g.distributor.id]} · share again` : "Share order on WhatsApp"}
             </Button>
+            {whatsappDigits(g.distributor.whatsapp) === null && (
+              <p className="mt-2 text-xs text-ink-2">No WhatsApp number is saved for {g.distributor.name}. WhatsApp will open without a contact, so pick the contact yourself. To fix this, add the number in More, then Distributors.</p>
+            )}
             {took[g.distributor.id] && <p role="status" className="mt-2 text-center text-sm font-semibold">Order prepared in {took[g.distributor.id]}</p>}
           </div>
         </Glass>
