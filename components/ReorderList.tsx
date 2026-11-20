@@ -9,6 +9,7 @@ import { ConfidenceBadge } from "@/components/ui/Badge";
 import { DotLabel, DotNumber } from "@/components/ui/DotText";
 import { clock, formatPrepTime } from "@/lib/prep-time";
 import { waLink, whatsappDigits } from "@/lib/whatsapp";
+import { orderText, shareAction, type SentOrder } from "@/lib/share-order";
 
 export type Line = { itemId: string; name: string; pack: string; stock: number; suggested: number; confidence: "High" | "Medium" | "Low"; perDay: number };
 export type Group = { distributor: { id: string; name: string; salesman: string; whatsapp: string }; lines: Line[] };
@@ -42,16 +43,18 @@ function usePrepTimer() {
 
 export default function ReorderList({ groups, shopName }: { groups: Group[]; shopName: string }) {
   const [qty, setQty] = useState<Record<string, number>>(() => Object.fromEntries(groups.flatMap((g) => g.lines.map((l) => [l.itemId, l.suggested]))));
-  const [sent, setSent] = useState<Record<string, string>>({});
+  const [sent, setSent] = useState<Record<string, SentOrder>>({}); // one saved order per distributor; "share again" reuses it
   const [took, setTook] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const timer = usePrepTimer();
 
   async function share(g: Group) {
+    // Share again: open WhatsApp with the order that was already saved. Never save a second order for the same list.
+    if (shareAction(sent[g.distributor.id]) === "reopen") { window.open(waLink(g.distributor.whatsapp, sent[g.distributor.id].text), "_blank"); return; }
     setBusy(g.distributor.id);
     const lines = g.lines.map((l) => ({ itemId: l.itemId, qty: qty[l.itemId] ?? 0 })).filter((l) => l.qty > 0);
-    const first = !sent[g.distributor.id]; // sharing the same order again is not a new order, so it is not timed
+    const first = true; // only the first share is timed
     const prepSeconds = first ? timer.read() : null; // the moment Share was tapped
     const res = await fetch("/api/orders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ distributorId: g.distributor.id, lines, prepSeconds }) });
     setBusy(null);
@@ -62,12 +65,8 @@ export default function ReorderList({ groups, shopName }: { groups: Group[]; sho
       setTook((t) => ({ ...t, [g.distributor.id]: formatPrepTime(prepSeconds) }));
       timer.reset();
     }
-    const text = [
-      `Order from ${shopName} (${orderId})`,
-      ...g.lines.filter((l) => (qty[l.itemId] ?? 0) > 0).map((l, i) => `${i + 1}. ${l.name} ${l.pack} x ${qty[l.itemId]}`),
-      "Please confirm delivery date. Thank you.",
-    ].join("\n");
-    setSent((s) => ({ ...s, [g.distributor.id]: orderId }));
+    const text = orderText(shopName, orderId, g.lines.map((l) => ({ name: l.name, pack: l.pack, qty: qty[l.itemId] ?? 0 })));
+    setSent((s) => ({ ...s, [g.distributor.id]: { orderId, text } }));
     window.open(waLink(g.distributor.whatsapp, text), "_blank");
   }
 
@@ -95,15 +94,16 @@ export default function ReorderList({ groups, shopName }: { groups: Group[]; sho
                 </Link>
                 <div className="mt-2 flex items-center justify-between">
                   <span className="text-sm text-ink-2">Quantity to order</span>
-                  <NumberInput id={`q-${l.itemId}`} label={`quantity for ${l.name}`} value={qty[l.itemId] ?? 0} onChange={(n) => setQty((s) => ({ ...s, [l.itemId]: n }))} />
+                  <NumberInput id={`q-${l.itemId}`} label={`quantity for ${l.name}`} value={qty[l.itemId] ?? 0} disabled={!!sent[g.distributor.id]} onChange={(n) => setQty((s) => ({ ...s, [l.itemId]: n }))} />
                 </div>
               </li>
             ))}
           </ul>
           <div className="mt-3">
             <Button full icon={sent[g.distributor.id] ? "check" : "share"} onClick={() => share(g)} disabled={busy === g.distributor.id}>
-              {sent[g.distributor.id] ? `Sent as ${sent[g.distributor.id]} · share again` : "Share order on WhatsApp"}
+              {sent[g.distributor.id] ? `Sent as ${sent[g.distributor.id].orderId} · share again` : "Share order on WhatsApp"}
             </Button>
+            {sent[g.distributor.id] && <p className="mt-2 text-xs text-ink-2">This order is saved, so the quantities are locked. Tap the button to open WhatsApp again.</p>}
             {whatsappDigits(g.distributor.whatsapp) === null && (
               <p className="mt-2 text-xs text-ink-2">No WhatsApp number is saved for {g.distributor.name}. WhatsApp will open without a contact, so pick the contact yourself. To fix this, add the number in More, then Distributors.</p>
             )}
