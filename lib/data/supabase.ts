@@ -168,7 +168,8 @@ export const supabaseStore: Store = {
     const { sb } = await lightMe();
     const { data, error } = await sb.rpc("reset_business_date");
     if (error) throw new Error(/reset_business_date/.test(error.message) && /not exist|schema cache|find the function/i.test(error.message) ? setupMessage(error.message) : error.message);
-    return { removedSampleSales: (data as { removed_sample_sales: number }).removed_sample_sales };
+    const r = data as { removed_sales?: number; removed_sample_sales: number };
+    return { removedSales: r.removed_sales ?? r.removed_sample_sales, removedSampleSales: r.removed_sample_sales }; // removed_sales is new in migration 0010
   },
   async createShop(name, locality, consent) {
     const sb = await client();

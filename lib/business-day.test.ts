@@ -215,9 +215,10 @@ describe("Close the day: sell 10 sugar, close the day, the numbers move as a han
     await expect(demoStore.closeDay(day, [{ itemId: id, qty: 2 }])).rejects.toThrow(/5 or more sales/);
   });
 
-  it("back to the real date removes the sample sales (and puts the stock back), and keeps the real ones", async () => {
+  it("back to the real date removes EVERY sale dated after the real date (real and sample), puts the stock back, and says how many", async () => {
     const start = await demoStore.getBusinessDay();
     expect(start.simulated).toBe(true); // from the test above
+    const real = todayIST();
     const id = raw.items[1].id;
     const stockBefore = (await demoStore.listItems()).find((i) => i.id === id)!.currentStock;
     // a thin day: close the busy day first, so the shop moves to a new day with no sales yet
@@ -227,12 +228,50 @@ describe("Close the day: sell 10 sugar, close the day, the numbers move as a han
     expect(have).toBeLessThan(5);
     await demoStore.closeDay(day, [{ itemId: id, qty: 3 }]);
     expect((await demoStore.listItems()).find((i) => i.id === id)!.currentStock).toBe(Math.max(0, stockBefore - 3));
-    const realSalesBefore = (await demoStore.listSales("2000-01-01")).length;
+
+    // by hand, before going back: which sales are dated after the real date, and the stock each item should get back
+    const all = await demoStore.listSales("2000-01-01");
+    const later = all.filter((s) => s.date > real);
+    expect(later.some((s) => !(s as { sample?: boolean }).sample)).toBe(true); // real sales made on days ahead (the earlier tests made 5)
+    const stock = async () => new Map((await demoStore.listItems()).map((i) => [i.id, i.currentStock]));
+    const s0 = await stock();
+    const goes = (s: { date: string }) => s.date > real || (!!(s as { sample?: boolean }).sample && s.date >= real);
+    const removed = all.filter(goes);
+    const back = new Map<string, number>();
+    for (const s of removed) back.set(s.itemId, (back.get(s.itemId) ?? 0) + ((s as { taken?: number }).taken ?? s.qty));
+
     const r = await demoStore.resetBusinessDate();
-    expect(r.removedSampleSales).toBe(1);
+    expect(r.removedSales).toBe(removed.length);
+    expect(r.removedSampleSales).toBe(removed.filter((s) => (s as { sample?: boolean }).sample).length);
+    expect(r.removedSales).toBeGreaterThan(r.removedSampleSales); // real sales were removed too
     const bd = await demoStore.getBusinessDay();
     expect(bd.simulated).toBe(false);
     expect(bd.date).toBe(todayIST());
-    expect((await demoStore.listSales("2000-01-01")).length).toBe(realSalesBefore - 1);
+    const left = await demoStore.listSales("2000-01-01");
+    expect(left.filter((s) => s.date > real).length).toBe(0); // 0 sales after the real date
+    expect(left.length).toBe(all.length - removed.length);
+    const s1 = await stock();
+    for (const [itemId, units] of back) expect(s1.get(itemId), itemId).toBe((s0.get(itemId) ?? 0) + units);
+  });
+
+  it("a real sale on a simulated future day goes on Back to real date; a real sale on the real date stays; stock that ran out gets back only what the sale took", async () => {
+    await demoStore.resetBusinessDate(); // start from the real date
+    const real = todayIST();
+    const id = raw.items[2].id;
+    await demoStore.addSale(id, 1, "Quick tap"); // a real sale today: stays
+    await demoStore.closeDay(real, []); // the shop moves to tomorrow
+    const tomorrow = (await demoStore.getBusinessDay()).date;
+    expect(tomorrow).toBe(addDays(real, 1));
+    const s0 = (await demoStore.listItems()).find((i) => i.id === id)!.currentStock;
+    await demoStore.addSale(id, 2, "Quick tap"); // a real sale on a day that has not come yet
+    await demoStore.addSale(id, s0 + 4, "Quick tap"); // bigger than what is left: it can take only what is there (s0 - 2)
+    expect((await demoStore.listItems()).find((i) => i.id === id)!.currentStock).toBe(0);
+    const r = await demoStore.resetBusinessDate();
+    expect(r.removedSales).toBeGreaterThanOrEqual(2);
+    const items = await demoStore.listItems();
+    expect(items.find((i) => i.id === id)!.currentStock).toBe(s0); // exactly what was there before the two future sales, not more
+    const sales = (await demoStore.listSales("2000-01-01")).filter((s) => s.itemId === id);
+    expect(sales.filter((s) => s.date > real).length).toBe(0);
+    expect(sales.some((s) => s.date === real && s.qty === 1)).toBe(true);
   });
 });

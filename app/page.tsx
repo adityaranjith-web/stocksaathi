@@ -47,7 +47,7 @@ export default async function Home() {
       {showClose && (
         <BusinessDayControls
           today={niceDay(desk.businessDate)} next={niceDay(addDays(desk.businessDate, 1))} simulated={desk.simulated}
-          canFill={day.sampleShop && day.salesToday < SAMPLE_MIN_SALES} salesToday={day.salesToday} delay={1}
+          sampleShop={day.sampleShop} minSales={SAMPLE_MIN_SALES} salesToday={day.salesToday} delay={1}
         />
       )}
 

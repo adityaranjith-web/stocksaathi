@@ -70,7 +70,8 @@ export interface Store {
    */
   closeDay(day: string, sample: { itemId: string; qty: number }[]): Promise<CloseDayResult>;
   /** Owner on the product team only. Back to the real date; removes sample sales and forecasts dated today or later. */
-  resetBusinessDate(): Promise<{ removedSampleSales: number }>;
+  /** Back to the real date: removes every sale dated after it (real and sample) and puts the stock back. Says how many it removed. */
+  resetBusinessDate(): Promise<{ removedSales: number; removedSampleSales: number }>;
   /** First sign-in, no shop and no helper invite: make the signed-in person the owner of a new shop (live mode only). */
   createShop(name: string, locality: string, consent: boolean): Promise<{ shopId: string }>;
   /** Owner only: delete the shop, everything in it, the helpers and the owner's own sign-in record (live mode only). */

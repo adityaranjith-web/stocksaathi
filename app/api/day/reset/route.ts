@@ -3,8 +3,9 @@ import { teamOnly } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-// Back to the real date (owner on the product team only). Removes what the simulation made for today and later:
-// sample sales (their stock is put back) and saved forecasts. Real sales are never removed.
+// Back to the real date (owner on the product team only). Removes everything the simulation made after the real date:
+// every sale dated after it (real or sample, with the stock put back) and the saved forecasts. A real sale dated the real
+// date is kept. The answer says how many sales were removed.
 export async function POST() {
   const denied = await teamOnly();
   if (denied) return denied;

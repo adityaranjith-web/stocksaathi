@@ -550,13 +550,16 @@ async function main() {
     await as.user(people.alice);
     const realSalesBefore = (await q("select count(*)::int n from sales where not is_sample"))[0].n;
     const [{ r: rr }] = await q("select reset_business_date() r");
-    assert(rr.business_date === real && rr.removed_sample_sales === 6, "reset answered " + JSON.stringify(rr));
+    // 0010: every sale dated after the real date goes, real or sample: the 6 sample rows (made for the real date) and the 5 real
+    // sales of 1 unit on item i1 (dated the day after)
+    assert(rr.business_date === real && rr.removed_sample_sales === 6 && rr.removed_sales === 11 && rr.removed_real_sales === 5, "reset answered " + JSON.stringify(rr));
     b = await snapBusiness();
     assert(b.business_date === real && b.real_date === real, "after reset: " + JSON.stringify(b));
     assert((await q("select count(*)::int n from sales where is_sample"))[0].n === 0, "sample sales are still there after going back");
-    assert((await q("select count(*)::int n from sales where not is_sample"))[0].n === realSalesBefore, "real sales were removed");
-    // the 5 real sales of 1 unit on item i1 (made above) are kept, so i1 is 5 lower; the sample units are all back
-    assert((await stock(i1)) === before.i1 - 5 && (await stock(i2)) === before.i2 && (await stock(i3)) === before.i3, "stock was not put back");
+    assert((await q("select count(*)::int n from sales where not is_sample"))[0].n === realSalesBefore - 5, "the 5 real sales dated after the real date should be gone");
+    assert((await q("select count(*)::int n from sales where sale_date > $1", [real]))[0].n === 0, "a sale dated after the real date is left");
+    // all the stock is back: the sample units and the 5 real units
+    assert((await stock(i1)) === before.i1 && (await stock(i2)) === before.i2 && (await stock(i3)) === before.i3, "stock was not put back");
     const left = (await q("select string_agg(run_date::text, ',' order by run_date) d from final_forecasts where item_id = $1 and run_date >= $2", [aliceItem, await plus(real, -1)]))[0].d;
     assert(left === (await plus(real, -1)), "forecasts for today and later should be gone, yesterday's kept; left: " + left);
     // a business date in the past counts as the real date
@@ -564,10 +567,10 @@ async function main() {
     await as.user(people.alice);
     assert((await snapBusiness()).business_date === real, "a past business date was not treated as the real date");
     await as.admin(); await c.query("update shops set business_date = null where id = $1", [demoShop]);
-    return "Only the owner on the product team can close the day or go back (a normal owner, a helper, a stranger and anonymous are all refused). A wrong date is refused. 6 sample sales were added for the demo shop only, labelled is_sample, and cut stock like real sales; a day with 5 or more sales is not filled; another shop's close did not move this shop's date. Going back removed the sample sales and the forecasts for today and later, put stock back, kept every real sale and yesterday's forecast, and a past business date counts as the real date.";
+    return "Only the owner on the product team can close the day or go back (a normal owner, a helper, a stranger and anonymous are all refused). A wrong date is refused. 6 sample sales were added for the demo shop only, labelled is_sample, and cut stock like real sales; a day with 5 or more sales is not filled; another shop's close did not move this shop's date. Going back removed all 11 sales dated after the real date (6 sample, 5 real) and the forecasts for today and later, put all the stock back, kept yesterday's forecast, and a past business date counts as the real date.";
   });
 
-  await test("D24", "The demo owner is on the product team: it can close the day, go back and edit the festival calendar; it cannot delete the shop; going back never removes a real sale and gives back exactly the stock the sample sales took (0009)", async () => {
+  await test("D24", "The demo owner is on the product team: it can close the day, go back and edit the festival calendar; it cannot delete the shop; going back gives back exactly the stock the sample sales took (0009) and, since 0010, also removes real sales dated after the real date", async () => {
     const demoOwner = { id: "f6666666-6666-4666-8666-666666666666", email: "demo.owner@example.com", name: "Demo owner" };
     const real = (await q("select (now() at time zone 'Asia/Kolkata')::date::text d"))[0].d;
     const plus = async (d, n) => (await q("select ($1::date + $2::int)::text d", [d, n]))[0].d;
@@ -597,11 +600,12 @@ async function main() {
 
     await as.user(demoOwner);
     const [{ r: c2 }] = await q("select reset_business_date() r");
-    assert(c2.removed_sample_sales === 1, "reset answered " + JSON.stringify(c2));
+    assert(c2.removed_sample_sales === 1 && c2.removed_real_sales === 2 && c2.removed_sales === 3, "reset answered " + JSON.stringify(c2));
     await as.admin();
-    assert((await q("select current_stock s from items where id = $1", [item]))[0].s === 3, "stock should be back to exactly 3, not 5");
+    // 3 from the sample sale (it took 3 of its 5, not 5) + 1 + 1 from the two real sales dated tomorrow = 5
+    assert((await q("select current_stock s from items where id = $1", [item]))[0].s === 5, "stock should be back to 3 + 2, not 3 + 5 + 2");
     const realAfter = (await q("select count(*)::int n, coalesce(sum(quantity),0)::int u from sales where not is_sample"))[0];
-    assert(realAfter.n === realBefore.n && realAfter.u === realBefore.u, "a real sale was removed: " + JSON.stringify([realBefore, realAfter]));
+    assert(realAfter.n === realBefore.n - 2 && realAfter.u === realBefore.u - 2, "the 2 real sales dated tomorrow should be gone and today's real sale kept: " + JSON.stringify([realBefore, realAfter]));
     assert((await q("select count(*)::int n from sales where is_sample and sale_date >= $1", [real]))[0].n === 0, "sample sales for today or later are still there");
 
     // still cannot delete the shop; the festival calendar can be edited (team)
@@ -611,7 +615,49 @@ async function main() {
     await q("delete from conditions_calendar where day = '2027-02-02'");
     await as.admin();
     assert((await q("select count(*)::int n from shops where id = $1", [demoShop]))[0].n === 1, "the shop is gone");
-    return "The demo owner (owner + product team + demo): closed a day, added a sample sale for 5 units on a stock of 3 (it took 3), went back and got exactly 3 back; the 3 real sales (one today, two ahead) are all still there; it cannot delete the shop; it can add and remove a festival day.";
+    return "The demo owner (owner + product team + demo): closed a day, added a sample sale for 5 units on a stock of 3 (it took 3), went back and got exactly 3 back for it plus 2 for the two real sales dated tomorrow, which went too; today's real sale is still there; it cannot delete the shop; it can add and remove a festival day.";
+  });
+
+  await test("D26", "Back to real date removes EVERY sale dated after the real date, real and sample, puts the stock back (stock_taken where set, else the quantity) and says how many (0010)", async () => {
+    const demoOwner = { id: "f6666666-6666-4666-8666-666666666666", email: "demo.owner@example.com", name: "Demo owner" };
+    const real = (await q("select (now() at time zone 'Asia/Kolkata')::date::text d"))[0].d;
+    const plus = async (d, n) => (await q("select ($1::date + $2::int)::text d", [d, n]))[0].d;
+    const stock = async (id) => (await q("select current_stock s from items where id = $1", [id]))[0].s;
+    await as.admin();
+    const item = (await q("select id from items where shop_id = $1 order by name limit 1", [demoShop]))[0].id;
+    await c.query("update items set current_stock = 10 where id = $1", [item]);
+    await c.query("update users set is_team = true where id = $1 and is_demo", [demoOwner.id]);
+    const sinceId = (await q("select coalesce(max(id),0)::int m from sales"))[0].m;
+
+    // a real sale today (stays), two real sales on a day that has not come yet (one bigger than the stock left), one sample sale between
+    await as.user(demoOwner);
+    const ins = "insert into sales (shop_id, item_id, sale_date, quantity, entry_method) values ($1,$2,$3,$4,'Quick tap')";
+    await q(ins, [demoShop, item, real, 1]); // stock 10 -> 9
+    await q(ins, [demoShop, item, await plus(real, 3), 4]); // 9 -> 5
+    await q(ins, [demoShop, item, await plus(real, 3), 9]); // 5 -> 0: it can take only 5
+    await as.admin();
+    await q("insert into sales (shop_id, item_id, sale_date, quantity, entry_method, is_sample) values ($1,$2,$3,3,'Quick tap',true)", [demoShop, item, await plus(real, 2)]); // stock is 0: takes 0
+    const rows = await q("select quantity qty, is_sample s, stock_taken t from sales where id > $1 order by id", [sinceId]);
+    assert(JSON.stringify(rows.map((r) => r.t)) === JSON.stringify([null, null, 5, 0]), "stock_taken should be [null, null, 5, 0] (set for a sale that ran out of stock and for sample sales): " + JSON.stringify(rows));
+    assert((await stock(item)) === 0, "stock should be 0 before going back");
+
+    await as.user(demoOwner);
+    const [{ r }] = await q("select reset_business_date() r");
+    assert(r.removed_sales === 3 && r.removed_real_sales === 2 && r.removed_sample_sales === 1, "the answer should say 3 removed (2 real, 1 sample): " + JSON.stringify(r));
+    await as.admin();
+    assert((await q("select count(*)::int n from sales where shop_id = $1 and sale_date > $2", [demoShop, real]))[0].n === 0, "a sale dated after the real date is left");
+    assert((await q("select count(*)::int n from sales where id > $1 and sale_date = $2 and not is_sample", [sinceId, real]))[0].n === 1, "today's real sale should stay");
+    // 4 (quantity, stock_taken empty) + 5 (stock_taken, not 9) + 0 (sample that took nothing) = 9, so 0 + 9 = 9 = 10 - 1 (today's sale)
+    assert((await stock(item)) === 9, "stock should be 9 (10 minus today's sale), got " + (await stock(item)));
+    await as.user(demoOwner);
+    const [{ r: again }] = await q("select reset_business_date() r");
+    assert(again.removed_sales === 0, "a second go back should remove nothing: " + JSON.stringify(again));
+    await as.admin();
+    assert((await stock(item)) === 9, "stock changed on the second go back");
+    // not for a helper or an owner off the team
+    await as.user({ id: "f7777777-7777-4777-8777-777777777777", email: "demo.helper@example.com", name: "Demo helper" });
+    await refused("select reset_business_date()", [], /Only the owner on the product team/);
+    return "A real sale today stayed; two real sales and one sample sale dated after the real date were all removed (3 removed: 2 real, 1 sample, and the answer says so). Stock came back as stock_taken where set (5, not the 9 asked; 0 for the sample sale that took nothing) and the quantity where not (4): 9 = 10 minus today's sale. A second go back removes nothing. A helper is refused.";
   });
 
   await test("D16", "Delete my account: owner only, must type the shop name, removes the whole shop, helpers and sign-ins, and nothing of any other shop", async () => {

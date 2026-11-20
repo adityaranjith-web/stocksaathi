@@ -18,7 +18,7 @@ interface DemoState {
   items: Item[];
   distributors: Distributor[];
   calendar: CalendarDay[];
-  sales: (Sale & { sample?: boolean; csv?: boolean })[]; // sample = made by "Close the day" for the demo shop; csv = saved by a file upload
+  sales: (Sale & { sample?: boolean; csv?: boolean; taken?: number })[]; // sample = made by "Close the day"; csv = saved by a file upload; taken = what the sale really took off stock, when less than its quantity
   /** The shop's own "today" when days were closed ahead of the real date; null follows the real date. */
   businessDate: string | null;
   deliveries: DeliveryRecord[];
@@ -85,7 +85,7 @@ export const demoStore: Store = {
       for (const r of sample) {
         const item = s.items.find((i) => i.id === r.itemId);
         if (!item) continue;
-        s.sales.push({ date, itemId: r.itemId, qty: r.qty, sample: true });
+        s.sales.push({ date, itemId: r.itemId, qty: r.qty, sample: true, taken: Math.min(r.qty, item.currentStock) });
         item.currentStock = Math.max(0, item.currentStock - r.qty);
         sampleRows++;
       }
@@ -96,14 +96,17 @@ export const demoStore: Store = {
   async resetBusinessDate() {
     const s = state();
     const real = todayIST();
-    const removed = s.sales.filter((x) => x.sample && x.date >= real);
+    // every sale dated after the real date goes (real or sample), and the sample sales made for the real date itself;
+    // the stock goes back as exactly what each sale took
+    const gone = (x: { sample?: boolean; date: string }) => x.date > real || (!!x.sample && x.date >= real);
+    const removed = s.sales.filter(gone);
     for (const r of removed) {
       const item = s.items.find((i) => i.id === r.itemId);
-      if (item) item.currentStock += r.qty;
+      if (item) item.currentStock += r.taken ?? r.qty;
     }
-    s.sales = s.sales.filter((x) => !(x.sample && x.date >= real));
+    s.sales = s.sales.filter((x) => !gone(x));
     s.businessDate = null;
-    return { removedSampleSales: removed.length };
+    return { removedSales: removed.length, removedSampleSales: removed.filter((x) => x.sample).length };
   },
   async createShop() { throw new Error("Demo mode has no accounts. Connect a Supabase project to create a shop."); },
   async deleteMyAccount() { throw new Error("Demo mode has no accounts to delete. Restart the server to reset the demo data."); },
@@ -136,7 +139,7 @@ export const demoStore: Store = {
       if (seen.has(key)) return;
       seen.add(key);
     }
-    s.sales.push({ date: bizDate(), itemId, qty });
+    s.sales.push({ date: bizDate(), itemId, qty, ...(item.currentStock < qty ? { taken: item.currentStock } : {}) }); // taken: only when the stock ran out
     item.currentStock = Math.max(0, item.currentStock - qty);
   },
   async addDelivery(itemId, qty) {
