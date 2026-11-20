@@ -234,9 +234,14 @@ export const supabaseStore: Store = {
   },
 
   // ----- writes -----
-  async addSale(itemId, qty, method) {
+  async addSale(itemId, qty, method, at) {
     const { sb, user, businessDate } = await lightMe();
-    const { error } = await sb.from("sales").insert({ shop_id: user.shop_id, item_id: itemId, sale_date: businessDate, quantity: qty, entry_method: method, logged_by: user.id });
+    if (at) { // a sale saved offline: the same person, item and tap moment is the same sale, so a repeat changes nothing
+      const have = await sb.from("sales").select("id").eq("logged_by", user.id).eq("item_id", itemId).eq("sold_at", at.toISOString()).limit(1);
+      if (have.error) throw new Error(have.error.message);
+      if (have.data && have.data.length) return;
+    }
+    const { error } = await sb.from("sales").insert({ shop_id: user.shop_id, item_id: itemId, sale_date: businessDate, quantity: qty, entry_method: method, logged_by: user.id, ...(at ? { sold_at: at.toISOString() } : {}) });
     if (error) throw new Error(error.message);
   },
   async addDelivery(itemId, qty) {

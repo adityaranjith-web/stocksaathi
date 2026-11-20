@@ -15,8 +15,9 @@ const store: QueueStorage = {
   write(q) { try { localStorage.setItem(KEY, JSON.stringify(q)); } catch { /* storage blocked */ } },
 };
 
-async function send(p: { itemId: string; qty: number }) {
-  const res = await fetch("/api/sales", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) });
+// ts (the moment of the tap) is sent only for sales saved offline, so the server can recognise a repeat.
+async function send(p: { itemId: string; qty: number; ts?: number }) {
+  const res = await fetch("/api/sales", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ itemId: p.itemId, qty: p.qty, clientTs: p.ts }) });
   if (!res.ok) throw new Error(await res.text());
 }
 

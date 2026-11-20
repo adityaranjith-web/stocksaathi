@@ -194,7 +194,10 @@ describe("speed settings stay in place", () => {
   });
   it("the sales are never read as raw rows page by page any more", () => {
     const store = readFileSync(path.join(ROOT, "lib/data/supabase.ts"), "utf8");
-    expect(store).not.toMatch(/from\("sales"\)\s*\.select\(/);
+    // Page loads read sales only through shop_snapshot. The only raw reads left are two rare writes:
+    // addSale (a one-row check that an offline sale was not already saved) and importSales (the duplicate-file check).
+    const readers = store.split(/\n(?=  async )/).filter((fn) => /from\("sales"\)\s*\.select\(/.test(fn)).map((fn) => (fn.match(/async (\w+)/) ?? [])[1]);
+    expect(readers.filter((n) => n !== "addSale" && n !== "importSales")).toEqual([]);
     expect(store).toMatch(/shop_snapshot/);
   });
 });

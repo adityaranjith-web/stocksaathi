@@ -32,7 +32,7 @@ interface DemoState {
 
 export const DEMO_ROLE_COOKIE = "ss_role";
 
-const g = globalThis as unknown as { __stocksaathiDemo?: DemoState };
+const g = globalThis as unknown as { __stocksaathiDemo?: DemoState; __stocksaathiTaps?: Set<string> };
 
 function load(): DemoState {
   const shift = daysBetween(raw.lastDataDay, asOfDay());
@@ -125,10 +125,16 @@ export const demoStore: Store = {
   async listOrders(sinceDate): Promise<OrderRecord[]> {
     return state().orders.filter((o) => o.date >= sinceDate).map((o) => ({ orderId: o.orderId, date: o.date, distributorId: o.distributorId, prepSeconds: o.prepSeconds }));
   },
-  async addSale(itemId, qty) {
+  async addSale(itemId, qty, _method, at) {
     const s = state();
     const item = s.items.find((i) => i.id === itemId);
     if (!item) throw new Error("Unknown item");
+    if (at) { // a sale saved offline and sent again: the same item and tap moment is recorded once
+      const seen = (g.__stocksaathiTaps ??= new Set<string>());
+      const key = `${itemId}|${at.getTime()}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+    }
     s.sales.push({ date: bizDate(), itemId, qty });
     item.currentStock = Math.max(0, item.currentStock - qty);
   },

@@ -83,7 +83,8 @@ export interface Store {
   openOrderQty(): Promise<Record<string, number>>;
   openOrders(): Promise<OpenOrder[]>;
   listOrders(sinceDate: string): Promise<OrderRecord[]>;
-  addSale(itemId: string, qty: number, method: "Quick tap" | "CSV upload"): Promise<void>;
+  /** `at` is the moment of the tap, sent only for sales saved offline: the same person, item and moment is the same sale, so a repeat is ignored. */
+  addSale(itemId: string, qty: number, method: "Quick tap" | "CSV upload", at?: Date): Promise<void>;
   addDelivery(itemId: string, qty: number): Promise<void>;
   importSales(rows: ImportRow[]): Promise<ImportResult>;
   createOrder(distributorId: string, lines: { itemId: string; qty: number }[], prepSeconds?: number | null): Promise<{ orderId: string }>;
