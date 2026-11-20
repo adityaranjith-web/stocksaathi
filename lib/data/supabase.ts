@@ -14,6 +14,7 @@ import { addDays, type CalendarDay } from "@/lib/forecast/desk";
 import { timedFetch } from "@/lib/perf";
 import { rowToItem } from "./rows";
 import { AccessError, SetupError, setupMessage } from "./errors";
+import { splitDuplicates } from "@/lib/csv-dedupe";
 import type { AiForecastRow, BusinessDay, CloseDayResult, Distributor, DistributorInput, Helper, ImportResult, ImportRow, Item, ItemInput, Me, OpenOrder, OrderRecord, SavedForecast, Sale, Store } from "./types";
 
 export async function supabaseServer() {
@@ -260,11 +261,24 @@ export const supabaseStore: Store = {
       if (!it) { errors.push({ line: r.line, issue: `Item not found: "${r.itemName}"` }); continue; }
       good.push({ shop_id: user.shop_id, item_id: it.id, sale_date: r.date, quantity: r.qty, entry_method: "CSV upload", logged_by: user.id });
     }
-    for (let i = 0; i < good.length; i += 500) {
-      const { error } = await sb.from("sales").insert(good.slice(i, i + 500));
+    // The same file uploaded again must not count every sale twice: rows an earlier upload already saved are skipped.
+    const saved: { item_id: string; sale_date: string; quantity: number }[] = [];
+    if (good.length) {
+      const ids = [...new Set(good.map((g) => g.item_id))];
+      const days = good.map((g) => g.sale_date).sort();
+      for (let from = 0; ; from += 1000) {
+        const { data, error } = await sb.from("sales").select("item_id, sale_date, quantity").eq("entry_method", "CSV upload").in("item_id", ids).gte("sale_date", days[0]).lte("sale_date", days[days.length - 1]).order("id").range(from, from + 999);
+        if (error) throw new Error(error.message);
+        saved.push(...(data ?? []));
+        if (!data || data.length < 1000) break;
+      }
+    }
+    const { fresh, duplicates } = splitDuplicates(good, saved.map((s) => ({ item_id: s.item_id, sale_date: s.sale_date, quantity: s.quantity })) as typeof good, (x) => `${x.item_id}|${x.sale_date}|${x.quantity}`);
+    for (let i = 0; i < fresh.length; i += 500) {
+      const { error } = await sb.from("sales").insert(fresh.slice(i, i + 500));
       if (error) throw new Error(error.message);
     }
-    return { saved: good.length, errors };
+    return { saved: fresh.length, duplicates: duplicates.length, errors };
   },
   async createOrder(distributorId, lines, prepSeconds = null) {
     const { sb, user, businessDate } = await lightMe();

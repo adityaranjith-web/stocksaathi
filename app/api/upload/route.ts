@@ -10,7 +10,7 @@ export async function POST(req: Request) {
   const { rows, errors } = parseSalesCsv(text);
   try {
     const result = await getStore().importSales(rows);
-    return Response.json({ saved: result.saved, errors: [...errors, ...result.errors].sort((a, b) => a.line - b.line) });
+    return Response.json({ saved: result.saved, duplicates: result.duplicates, errors: [...errors, ...result.errors].sort((a, b) => a.line - b.line) });
   } catch (e) {
     return new Response((e as Error).message, { status: 400 });
   }

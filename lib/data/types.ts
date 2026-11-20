@@ -20,7 +20,8 @@ export interface ItemInput {
 export interface Sale { date: string; itemId: string; qty: number }
 export interface DeliveryRecord { date: string; itemId: string; qty: number }
 export interface ImportRow { date: string; itemName: string; qty: number; line: number }
-export interface ImportResult { saved: number; errors: { line: number; issue: string }[] }
+/** duplicates = rows skipped because an earlier upload already saved the same item, date and quantity. */
+export interface ImportResult { saved: number; duplicates: number; errors: { line: number; issue: string }[] }
 
 /** An order that was sent and has not been delivered yet. */
 export interface OpenOrder {

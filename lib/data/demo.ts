@@ -7,6 +7,7 @@ import raw from "./demo-data.json";
 import { addDays, type CalendarDay } from "@/lib/forecast/desk";
 import { asOfDay, daysBetween, todayIST } from "@/lib/dates";
 import { effectiveBusinessDate, MAX_DAYS_AHEAD } from "@/lib/business-day";
+import { splitDuplicates } from "@/lib/csv-dedupe";
 import type {
   AiForecastRow, BusinessDay, CloseDayResult, DeliveryRecord, Distributor, DistributorInput, Helper, ImportResult, ImportRow, Item, ItemInput,
   Me, OpenOrder, OrderRecord, Sale, Shop, Store,
@@ -17,7 +18,7 @@ interface DemoState {
   items: Item[];
   distributors: Distributor[];
   calendar: CalendarDay[];
-  sales: (Sale & { sample?: boolean })[]; // sample = made by "Close the day" for the demo shop
+  sales: (Sale & { sample?: boolean; csv?: boolean })[]; // sample = made by "Close the day" for the demo shop; csv = saved by a file upload
   /** The shop's own "today" when days were closed ahead of the real date; null follows the real date. */
   businessDate: string | null;
   deliveries: DeliveryRecord[];
@@ -153,14 +154,17 @@ export const demoStore: Store = {
     const s = state();
     const byName = new Map(s.items.map((i) => [i.name.toLowerCase(), i]));
     const errors: ImportResult["errors"] = [];
-    let saved = 0;
+    const good: { date: string; itemId: string; qty: number }[] = [];
     for (const r of rows) {
       const item = byName.get(r.itemName.toLowerCase());
       if (!item) { errors.push({ line: r.line, issue: `Item not found: "${r.itemName}"` }); continue; }
-      s.sales.push({ date: r.date, itemId: item.id, qty: r.qty });
-      saved++;
+      good.push({ date: r.date, itemId: item.id, qty: r.qty });
     }
-    return { saved, errors };
+    // the same file uploaded again must not count every sale twice (only rows saved by an earlier upload count as saved)
+    const key = (x: { date: string; itemId: string; qty: number }) => `${x.itemId}|${x.date}|${x.qty}`;
+    const { fresh, duplicates } = splitDuplicates(good, s.sales.filter((x) => x.csv), key);
+    for (const f of fresh) s.sales.push({ ...f, csv: true });
+    return { saved: fresh.length, duplicates: duplicates.length, errors };
   },
   async createOrder(distributorId, lines, prepSeconds = null) {
     const s = state();

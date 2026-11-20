@@ -5,7 +5,7 @@ import Glass from "@/components/ui/Glass";
 import DotIcon from "@/components/ui/DotIcon";
 import { DotLabel } from "@/components/ui/DotText";
 
-type Result = { saved: number; errors: { line: number; issue: string }[] };
+type Result = { saved: number; duplicates?: number; errors: { line: number; issue: string }[] };
 
 export default function CsvUpload() {
   const router = useRouter();
@@ -31,6 +31,7 @@ export default function CsvUpload() {
       {result && (
         <div className="text-sm">
           <p className="flex items-center gap-2 font-semibold"><DotIcon name="check" size={18} />{result.saved} rows saved</p>
+          {!!result.duplicates && <p className="mt-1">{result.duplicates} {result.duplicates === 1 ? "row was" : "rows were"} already saved by an earlier upload, so {result.duplicates === 1 ? "it was" : "they were"} skipped.</p>}
           {result.errors.length > 0 && (
             <ul role="alert" className="glass-alert mt-2 max-h-40 space-y-1 overflow-auto rounded-[16px] border p-3 font-semibold">
               {result.errors.map((e, i) => <li key={i}>{e.line ? `Row ${e.line}: ` : ""}{e.issue}</li>)}
