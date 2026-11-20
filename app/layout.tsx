@@ -5,6 +5,7 @@ import BottomNav from "@/components/BottomNav";
 import GlassMode from "@/components/ui/GlassMode";
 import MotionGuard from "@/components/MotionGuard";
 import RoleSwitch from "@/components/RoleSwitch";
+import SignOutConfirm from "@/components/SignOutConfirm";
 import { Badge } from "@/components/ui/Badge";
 import { isLive } from "@/lib/data";
 import { getMe } from "@/lib/auth";
@@ -37,6 +38,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               <div className="flex items-center gap-2">
                 {!isLive && <Badge>Demo data</Badge>}
                 {isLive && me?.role === "helper" && <Badge>Helper</Badge>}
+                {isLive && me?.role === "helper" && <SignOutConfirm />}
                 <GlassMode />
               </div>
             </div>

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { requireOwner } from "@/lib/auth";
+import { isLive } from "@/lib/data";
+import SignOutConfirm from "@/components/SignOutConfirm";
 import { MORE_HELP, SCREEN_HELP } from "@/lib/screen-help";
 import { buildVersion } from "@/lib/build-info";
 import { getAiMode } from "@/lib/forecast/ai/registry";
@@ -61,6 +63,7 @@ export default async function MorePage() {
       <p className="px-1 text-xs text-ink-2" data-testid="who-and-version">
         Signed in as {me.name} ({me.role === "owner" ? "owner" : "helper"}{me.isTeam ? ", product team" : ""}).{buildVersion() ? ` Version ${buildVersion()}.` : ""}
       </p>
+      {isLive && <SignOutConfirm variant="link" />}
     </div>
   );
 }
