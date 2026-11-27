@@ -47,9 +47,9 @@ If sign-in fails the app now says so: the sign-in page shows "Sign-in did not fi
 
 ## 3. Database migrations
 
-Run the files in `supabase/migrations/` **in order** in the Supabase SQL editor: `0001`, `0002`, `0003`, `0004`, `0005`, `0006`, `0007`, `0008`, `0009`. `supabase/seed.sql` adds the demo shop and is optional. After the seed on a fresh project also run `update shops set is_sample_shop = true where name = 'Sri Balaji Stores';` (migration 0008 does this for an existing project).
+Run the files in `supabase/migrations/` **in order** in the Supabase SQL editor: `0001`, `0002`, `0003`, `0004`, `0005`, `0006`, `0007`, `0008`, `0009`, `0010`, `0011`. `supabase/seed.sql` adds the demo shop and is optional. After the seed on a fresh project also run `update shops set is_sample_shop = true where name = 'Sri Balaji Stores';` (migration 0008 does this for an existing project).
 
-**Status of your project `stocksaathi`:** `0001` and `0002` were applied earlier. `0003`, `0004`, `0005` and `0006` (the speed migration) were applied on 12 Nov 2026 (with your permission) and `/api/health` then reported nothing missing. `0007` (protects the demo accounts) was applied later the same day, also with your permission. `0008` (the shop's business date, "Close the day" and labelled sample sales) was applied on 13 Nov 2026, also with your permission. Your 30 items and 822 real sales were not changed by the migrations. What was missing before is in `docs/migration-audit.md`.
+**Status of your project `stocksaathi`:** `0001` and `0002` were applied earlier. `0003`, `0004`, `0005` and `0006` (the speed migration) were applied on 12 Nov 2026 (with your permission) and `/api/health` then reported nothing missing. `0007` (protects the demo accounts) was applied later the same day, also with your permission. `0008` (the shop's business date, "Close the day" and labelled sample sales) was applied on 13 Nov 2026, also with your permission. Your 30 items and 822 real sales were not changed by the migrations. What was missing before is in `docs/migration-audit.md`. `0011` (a helper can read only what the Sell screen needs) is **written and tested but not applied yet**. It needs no app change; `/api/health` does not check for it.
 
 ## 4. Become the owner of "Sri Balaji Stores"
 
