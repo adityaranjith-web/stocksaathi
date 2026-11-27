@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Live-mode database tests on REAL PostgreSQL. Applies migrations 0001 to 0009 and the seed in order, then plays
+// Live-mode database tests on REAL PostgreSQL. Applies every migration and the seed in order, then plays
 // different people against the row-level security and the two onboarding functions.
 //
 //   TEST_DATABASE_URL=postgres://postgres:postgres@localhost:54329/postgres npm run db:test
@@ -242,11 +242,16 @@ async function main() {
     const [u] = await q("select role, shop_id, email from users where id=$1", [people.chitra.id]);
     assert(u.role === "helper" && u.shop_id === demoShop && u.email === people.chitra.email, JSON.stringify(u));
     assert((await q("select count(*)::int n from helper_invites"))[0].n === 0, "the invite was not used up, or the helper can see invites");
+    await as.admin();
     const before = (await q("select current_stock s from items where id=$1", [aliceItem]))[0].s;
+    const dist = (await q("select id from distributors where shop_id=$1 limit 1", [demoShop]))[0].id;
+    await as.user(people.chitra);
     await q("insert into sales (shop_id, item_id, sale_date, quantity, entry_method, logged_by) values ($1,$2,current_date,2,'Quick tap',$3)", [demoShop, aliceItem, people.chitra.id]);
+    await as.admin();
     const after = (await q("select current_stock s from items where id=$1", [aliceItem]))[0].s;
+    await as.user(people.chitra);
     assert(after === Math.max(0, before - 2), `stock ${before} -> ${after}`);
-    await refused("insert into orders (shop_id, distributor_id) select $1, id from distributors limit 1", [demoShop], /row-level security/);
+    await refused("insert into orders (shop_id, distributor_id) values ($1,$2)", [demoShop, dist], /row-level security/);
     await refused("insert into deliveries (shop_id, item_id, quantity) values ($1,$2,5)", [demoShop, aliceItem], /row-level security/);
     await refused("insert into items (shop_id, name, price) values ($1,'Helper Item',1)", [demoShop], /row-level security/);
     await refused("insert into distributors (shop_id, name) values ($1,'Helper Dist')", [demoShop], /row-level security/);
@@ -269,7 +274,8 @@ async function main() {
     assert((await rows("delete from users where id = $1 and role = 'helper'", [people.chitra.id])) === 1, "owner could not remove the helper");
     assert((await rows("delete from users where id = $1", [people.alice.id])) === 0, "an owner row can be deleted through the API");
     await as.user(people.chitra);
-    assert((await q("select count(*)::int n from items"))[0].n === 0, "a removed helper still sees items");
+    assert((await q("select count(*)::int n from shops"))[0].n === 0, "a removed helper still sees the shop");
+    assert((await q("select jsonb_array_length(helper_items()) n"))[0].n === 0, "a removed helper still gets the Sell list");
     assert((await q("select claim_invite() ok"))[0].ok === false, "a removed helper can rejoin without a new invite");
     return "Removing Chitra cut off her access at once and she cannot rejoin; the same email cannot be invited into two shops; an owner row cannot be deleted through the API.";
   });
@@ -464,7 +470,7 @@ async function main() {
     assert((await rows("delete from users where id = $1", [demo.helper.id])) === 0, "the demo helper was removed");
     // the demo helper is a normal helper: sees items, cannot do owner things
     await as.user(demo.helper);
-    assert((await q("select count(*)::int n from items"))[0].n === 30, "the demo helper does not see the items");
+    assert((await q("select jsonb_array_length(shop_snapshot(current_date - 55) -> 'items') n"))[0].n === 30, "the demo helper's Sell list does not have the 30 items");
     await refused("select delete_my_account('Sri Balaji Stores')", [], /demo account cannot delete/); // refused for two reasons; the demo one comes first
     assert((await rows("update items set price = 1 where id = $1", [aliceItem])) === 0, "the demo helper changed a price");
     // nobody can mark themselves as demo or un-mark a demo account through the API
@@ -660,6 +666,62 @@ async function main() {
     return "A real sale today stayed; two real sales and one sample sale dated after the real date were all removed (3 removed: 2 real, 1 sample, and the answer says so). Stock came back as stock_taken where set (5, not the 9 asked; 0 for the sample sale that took nothing) and the quantity where not (4): 9 = 10 minus today's sale. A second go back removes nothing. A helper is refused.";
   });
 
+  await test("D25", "A helper can read only what the Sell screen needs; the owner still reads everything (0011)", async () => {
+    const helper = { id: "f7777777-7777-4777-8777-777777777777", email: "demo.helper@example.com", name: "Demo helper" };
+    await as.service();
+    await q("insert into ai_forecasts (shop_id,item_id,run_date,provider,ai_units_per_day,blend_units_per_day,horizon_days) values ($1,$2,'2026-11-10','mock',5,5,9) on conflict do nothing", [demoShop, aliceItem]);
+    await as.user(people.alice);
+    await q("insert into helper_invites (shop_id, email, name) values ($1,'waiting@example.com','Waiting')", [demoShop]);
+
+    const OWNER_ONLY = ["items", "distributors", "orders", "order_lines", "deliveries", "model_forecasts", "model_scores", "final_forecasts", "ai_forecasts", "helper_invites"];
+    const counts = async () => { const o = {}; for (const t of OWNER_ONLY) o[t] = (await q(`select count(*)::int n from ${t}`))[0].n; return o; };
+    const owner = await counts();
+    assert(Object.values(owner).every((n) => n > 0), "set-up: the owner should have rows in every table: " + JSON.stringify(owner));
+
+    await as.user(helper);
+    const seen = await counts();
+    assert(Object.values(seen).every((n) => n === 0), "the helper can read owner-only rows: " + JSON.stringify(seen));
+    const me = await q("select id, role from users");
+    assert(me.length === 1 && me[0].id === helper.id && me[0].role === "helper", "the helper should see only their own user row: " + JSON.stringify(me));
+    assert((await q("select count(*)::int n from shops"))[0].n === 1, "the helper should see their shop");
+    assert((await q("select count(*)::int n from sales where logged_by is distinct from $1", [helper.id]))[0].n === 0, "the helper can read sales recorded by others");
+
+    // recording a sale still works, cuts stock, and the helper can find it again (the offline repeat check)
+    await as.admin();
+    await c.query("update items set current_stock = 20 where id = $1", [aliceItem]);
+    await as.user(helper);
+    const at = "2026-11-20T10:00:00.000Z";
+    await q("insert into sales (shop_id, item_id, sale_date, quantity, entry_method, logged_by, sold_at) values ($1,$2,current_date,1,'Quick tap',$3,$4)", [demoShop, aliceItem, helper.id, at]);
+    assert((await q("select count(*)::int n from sales where logged_by = $1 and item_id = $2 and sold_at = $3", [helper.id, aliceItem, at]))[0].n === 1, "the helper cannot find their own sale");
+    await as.admin();
+    assert((await q("select current_stock s from items where id = $1", [aliceItem]))[0].s === 19, "the helper's sale did not cut stock");
+    const top = (await q(`select i.name from items i left join (select item_id, sum(quantity) q from sales where shop_id = $1
+        and sale_date >= (now() at time zone 'Asia/Kolkata')::date - 14 group by item_id) s on s.item_id = i.id
+      where i.shop_id = $1 and i.is_active order by coalesce(s.q, 0) desc, i.name limit 3`, [demoShop])).map((r) => r.name);
+
+    // the snapshot a helper's phone gets
+    await as.user(helper);
+    const [{ s }] = await q("select shop_snapshot(current_date - 55) s");
+    assert(s.me.role === "helper" && s.shop.id === demoShop, "snapshot me/shop wrong");
+    assert(s.items.length === 30 && s.items.every((i) => i.name && i.price === 0 && i.current_stock === 0 && i.distributor_id === "" && i.category === null), "the Sell list gives more than names and packs: " + JSON.stringify(s.items[0]));
+    assert(JSON.stringify(s.items.slice(0, 3).map((i) => i.name)) === JSON.stringify(top), "fastest sellers are not first: " + JSON.stringify(s.items.slice(0, 3).map((i) => i.name)) + " vs " + JSON.stringify(top));
+    assert(s.distributors.length === 0 && s.sales.length === 0 && s.open_orders.length === 0 && Object.keys(s.on_order).length === 0, "the helper's snapshot has owner data");
+
+    // the owner's snapshot is unchanged in shape: prices, distributors and sales are there
+    await as.user(people.alice);
+    const [{ s: o }] = await q("select shop_snapshot(current_date - 55) s");
+    assert(o.items.length === 30 && o.items.some((i) => Number(i.price) > 0) && o.distributors.length > 0 && o.sales.length > 0, "the owner lost data");
+    assert((await q("select count(*)::int n from users"))[0].n >= 2, "the owner should see the shop's people");
+
+    await as.user(people.dev);
+    assert((await q("select jsonb_array_length(helper_items()) n"))[0].n === 0, "a person with no shop got a Sell list");
+    await as.anon();
+    await refused("select helper_items()", [], /permission denied/);
+    await as.admin();
+    await c.query("delete from helper_invites where email = 'waiting@example.com'");
+    return `A helper reads 0 rows of ${OWNER_ONLY.length} owner-only tables, only their own user row and their own sales; recording a sale and the offline repeat check still work; their snapshot has 30 item names and packs (fastest first) with no price, stock or supplier; the owner reads everything as before.`;
+  });
+
   await test("D16", "Delete my account: owner only, must type the shop name, removes the whole shop, helpers and sign-ins, and nothing of any other shop", async () => {
     // give Bala's shop everything: a helper (claimed), an unclaimed invite, orders, deliveries, sales, AI forecasts
     await as.user(people.bala);
@@ -733,7 +795,7 @@ async function main() {
 }
 
 function report() {
-  results.sort((a, b) => parseInt(a.id.slice(1), 10) - parseInt(b.id.slice(1), 10)); // D1, D2, ... D24
+  results.sort((a, b) => parseInt(a.id.slice(1), 10) - parseInt(b.id.slice(1), 10)); // D1, D2, ... D25
   const lines = ["| ID | Live-mode database check | Result | Evidence |", "|---|---|---|---|"];
   for (const r of results) lines.push(`| ${r.id} | ${r.title} | **${r.status}** | ${r.evidence.replace(/\|/g, "/").replace(/\n/g, " ")} |`);
   const fails = results.filter((r) => r.status === "FAIL").length;
